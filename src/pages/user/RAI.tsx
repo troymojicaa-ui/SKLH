@@ -10,6 +10,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
   MapContainer,
   TileLayer,
   Marker,
@@ -181,7 +187,7 @@ function ClickToCreate({ onPick }: { onPick: (lat: number, lng: number) => void 
   return null;
 }
 
-// -------- Modals --------
+// -------- Create Modal (kept) --------
 function CreateReportModal({
   open,
   onClose,
@@ -308,48 +314,6 @@ function CreateReportModal({
   );
 }
 
-function DetailsModal({
-  report,
-  onClose,
-}: {
-  report: Report | null;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog open={!!report} onOpenChange={(v) => (!v ? onClose() : null)}>
-      <DialogContent className="max-w-lg bg-white">
-        <DialogHeader>
-          <DialogTitle>{report?.title}</DialogTitle>
-          <DialogDescription>
-            {report &&
-              `${format(new Date(report.created_at), "PPp")} • ${report.location.lat.toFixed(
-                5
-              )}, ${report.location.lng.toFixed(5)}`}
-          </DialogDescription>
-        </DialogHeader>
-
-        {report?.image_url ? (
-          <div className="rounded border overflow-hidden">
-            <img src={report.image_url} alt={report.title} className="w-full h-auto" />
-          </div>
-        ) : (
-          <div className="rounded border p-4 text-sm text-muted-foreground flex items-center gap-2">
-            <ImageIcon className="h-4 w-4" /> No photo attached
-          </div>
-        )}
-
-        {report?.description && (
-          <div className="pt-2 text-sm">{report.description}</div>
-        )}
-
-        <div className="pt-2">
-          <StatusBadge status={report?.status ?? "new"} />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // Small status pill
 function StatusBadge({ status }: { status: ReportStatus }) {
   const style =
@@ -370,13 +334,11 @@ export default function RAI() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createLatLng, setCreateLatLng] = useState<{ lat: number; lng: number } | null>(null);
-
-  const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
 
   const mapRef = useRef<LeafletMap | null>(null);
 
@@ -395,8 +357,8 @@ export default function RAI() {
   }, []);
 
   const selectedReport = useMemo(
-    () => reports.find((r) => r.id === (hoverId ?? selectedId)) ?? null,
-    [reports, selectedId, hoverId]
+    () => reports.find((r) => r.id === (hoverId ?? expandedId)) ?? null,
+    [reports, expandedId, hoverId]
   );
 
   const visiblePins = reports.filter((r) => r.status !== "solved");
@@ -413,6 +375,7 @@ export default function RAI() {
     mapRef.current?.flyTo([r.location.lat, r.location.lng], DEFAULT_ZOOM, {
       duration: 0.5,
     });
+    setExpandedId(r.id); // auto-open the newly created report
   };
 
   return (
@@ -425,7 +388,7 @@ export default function RAI() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Left: list (read-only) */}
+        {/* Left: list with accordion */}
         <div className="lg:col-span-2 space-y-3">
           {loading ? (
             <Card className="p-4 text-sm text-muted-foreground">
@@ -436,42 +399,93 @@ export default function RAI() {
               No reports yet. Click on the map to create one.
             </Card>
           ) : (
-            reports.map((r) => {
-              const active = r.id === (hoverId ?? selectedId);
-              return (
-                <div
-                  key={r.id}
-                  onMouseEnter={() => setHoverId(r.id)}
-                  onMouseLeave={() => setHoverId(null)}
-                  onClick={() => setDetailsOpenId(r.id)}
-                  className={`rounded-lg border bg-white p-4 shadow-sm cursor-pointer transition
-                    ${active ? "ring-2 ring-primary/40" : "hover:shadow"}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-primary" />
-                        <h3 className="font-medium truncate">{r.title}</h3>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {r.description || "—"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">
-                          {format(new Date(r.created_at), "PPp")}
+            <Accordion
+              type="single"
+              collapsible
+              value={expandedId ?? ""}
+              onValueChange={(v) => setExpandedId(v || null)}
+              className="space-y-3"
+            >
+              {reports.map((r) => {
+                const active = r.id === (hoverId ?? expandedId);
+                return (
+                  <AccordionItem
+                    key={r.id}
+                    value={r.id}
+                    className={`rounded-xl border bg-white overflow-hidden ${
+                      active ? "ring-2 ring-primary/40" : ""
+                    }`}
+                  >
+                    <AccordionTrigger
+                      className="px-4 py-3 hover:no-underline"
+                      onMouseEnter={() => setHoverId(r.id)}
+                      onMouseLeave={() => setHoverId(null)}
+                    >
+                      <div className="flex w-full items-center gap-3 text-left">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            r.status === "new"
+                              ? "bg-blue-500"
+                              : r.status === "working"
+                              ? "bg-amber-500"
+                              : "bg-emerald-500"
+                          }`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{r.title}</div>
+                          <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5" />
+                              {r.location.lat.toFixed(3)}, {r.location.lng.toFixed(3)}
+                            </span>
+                            <span>•</span>
+                            <span>{format(new Date(r.created_at), "PPp")}</span>
+                            {r.address && (
+                              <>
+                                <span>•</span>
+                                <span className="truncate">{r.address}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <span>
+                          <StatusBadge status={r.status} />
                         </span>
-                        {r.address && (
-                          <span className="text-muted-foreground">
-                            • {r.address}
-                          </span>
-                        )}
-                        <StatusBadge status={r.status} />
                       </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+                    </AccordionTrigger>
+
+                    <AccordionContent className="px-4 pb-4 pt-1">
+                      <div className="space-y-4">
+                        {r.description ? (
+                          <p className="text-sm leading-relaxed">{r.description}</p>
+                        ) : (
+                          <p className="text-sm italic text-muted-foreground">
+                            No description provided.
+                          </p>
+                        )}
+
+                        {/* Image */}
+                        {r.image_url ? (
+                          <div className="rounded border overflow-hidden">
+                            <img
+                              src={r.image_url}
+                              alt={r.title}
+                              className="w-full h-auto"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <ImageIcon className="h-4 w-4" />
+                            No photo attached.
+                          </div>
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
           )}
         </div>
 
@@ -492,7 +506,7 @@ export default function RAI() {
             {/* Click to create */}
             <ClickToCreate onPick={onMapPick} />
 
-            {/* Fly to hover/selected */}
+            {/* Fly to hover/expanded */}
             <FlyTo
               center={
                 selectedReport
@@ -503,7 +517,7 @@ export default function RAI() {
 
             {/* Pins (hide solved) */}
             {visiblePins.map((r) => {
-              const active = r.id === (hoverId ?? selectedId);
+              const active = r.id === (hoverId ?? expandedId);
               const icon = iconFor(r, active);
               if (!icon) return null;
               return (
@@ -514,7 +528,7 @@ export default function RAI() {
                   eventHandlers={{
                     mouseover: () => setHoverId(r.id),
                     mouseout: () => setHoverId(null),
-                    click: () => setDetailsOpenId(r.id),
+                    click: () => setExpandedId(r.id), // expand corresponding accordion item
                   }}
                 >
                   <Popup>
@@ -540,18 +554,12 @@ export default function RAI() {
         </div>
       </div>
 
-      {/* Create report modal */}
+      {/* Create report modal (kept) */}
       <CreateReportModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         latLng={createLatLng}
         onCreated={handleCreated}
-      />
-
-      {/* Details modal */}
-      <DetailsModal
-        report={reports.find((r) => r.id === detailsOpenId) ?? null}
-        onClose={() => setDetailsOpenId(null)}
       />
     </div>
   );
