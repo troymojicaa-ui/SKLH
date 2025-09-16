@@ -5,7 +5,7 @@ import { Plus, Calendar as CalendarIcon } from "lucide-react";
 export default function AdminCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Mock events
+  // Mock events onlyy
   const events = [
     { id: 1, date: "2025-08-10", title: "Community Clean-Up Drive", category: "Public" },
     { id: 2, date: "2025-08-15", title: "Youth Sports Festival", category: "Volunteer" },

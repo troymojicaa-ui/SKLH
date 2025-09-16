@@ -1,5 +1,5 @@
 export const aboutUsMock = {
-  heroImage: "/hero-placeholder.jpg", // adjust path if needed
+  heroImage: "/hero-placeholder.jpg", 
   ourMissionImage: "/ourmission.jpg",
   whyWeMadeThisImage: "/whywemadethisproject.jpg",
 

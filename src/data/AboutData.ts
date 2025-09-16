@@ -1,7 +1,7 @@
-// src/data/AboutData.ts
+
 
 export let aboutData = {
-  heroImage: "/images/hero.jpg", // use actual photo path here
+  heroImage: "/images/hero.jpg", 
   heroSubtitle: "Empowering youth for a brighter tomorrow.",
   mission:
     "Our mission is to inspire and empower young individuals through leadership, service, and community-driven projects.",
@@ -15,7 +15,7 @@ export let aboutData = {
   ],
 };
 
-// Simple update function for temporary demo
+
 export function updateAboutData(newData: typeof aboutData) {
   aboutData = newData;
 }

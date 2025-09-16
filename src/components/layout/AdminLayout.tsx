@@ -1,5 +1,6 @@
+// src/components/layout/AdminLayout.tsx
 import { useState } from "react";
-import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Outlet, NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -7,33 +8,37 @@ import {
   Calendar,
   FileText,
   BarChart3,
-  Settings,
   Menu,
   LogOut,
   Shield,
   Home,
+  MapPin,
+  Building2,
+  Info,
 } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const location = useLocation();
 
-  // Sidebar navigation
+  // RELATIVE paths because this layout is mounted at /admin/app
   const navigation = [
-    { name: "Dashboard", href: "/admin", icon: Home },
-    { name: "Youth Database", href: "/admin/youth-database", icon: Users },
-    { name: "Projects", href: "/admin/projects", icon: FileText },
-    { name: "About Us", href: "/admin/about", icon: Users },
-    { name: "Calendar", href: "/admin/calendar", icon: Calendar },
-    // ✅ New merged page
-    { name: "Reports", href: "/admin/reports", icon: BarChart3 },
-    // ❌ Removed:
-    // { name: "See What's Happening", href: "/admin/news", icon: Calendar },
-    // { name: "Map", href: "/admin/map", icon: BarChart3 },
+    { name: "Dashboard", href: ".", icon: Home, end: true },
+    { name: "Reports", href: "reports", icon: BarChart3 },
+    { name: "Youth Database", href: "youth-database", icon: Users },
+    { name: "Projects", href: "projects", icon: FileText },
+    { name: "About Us", href: "about", icon: Info },
+    { name: "Calendar", href: "calendar", icon: Calendar },
+    { name: "Addresses", href: "addresses", icon: MapPin },     // ✅ admin addresses
+    { name: "Facilities", href: "facilities", icon: Building2 }, // ✅ admin facilities
   ];
 
-  const handleLogout = () => {
-    window.location.href = "/";
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      window.location.href = "/"; // or "/admin" if you prefer to land on admin login
+    }
   };
 
   const SidebarContent = () => (
@@ -42,11 +47,13 @@ const AdminLayout = () => {
         <Shield className="w-8 h-8 text-blue-600" />
         <span className="ml-2 text-lg font-semibold">SK Command</span>
       </div>
+
       <nav className="flex-1 space-y-1 px-2 py-4">
         {navigation.map((item) => (
           <NavLink
             key={item.name}
             to={item.href}
+            end={Boolean((item as any).end)}
             className={({ isActive }) =>
               `group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
                 isActive
@@ -61,12 +68,9 @@ const AdminLayout = () => {
           </NavLink>
         ))}
       </nav>
+
       <div className="border-t p-4">
-        <Button
-          onClick={handleLogout}
-          variant="outline"
-          className="w-full justify-start"
-        >
+        <Button onClick={handleLogout} variant="outline" className="w-full justify-start">
           <LogOut className="mr-3 h-4 w-4" />
           Logout
         </Button>
@@ -83,6 +87,7 @@ const AdminLayout = () => {
             variant="outline"
             size="icon"
             className="fixed top-4 left-4 z-40 md:hidden"
+            aria-label="Open sidebar"
           >
             <Menu className="h-4 w-4" />
           </Button>

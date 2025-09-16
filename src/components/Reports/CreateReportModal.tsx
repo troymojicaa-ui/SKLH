@@ -1,4 +1,4 @@
-// src/components/reports/CreateReportModal.tsx
+
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { MODAL_POSITION_CLASSES } from "@/components/ui/modalPosition";
+import ClickToPinMap from "./ClickToPinMap";
 
 /* ---------- Types ---------- */
 type ReportStatus = "new" | "working" | "solved";
@@ -37,13 +38,9 @@ type CreateInput = {
 type CreateReportModalProps = {
   open: boolean;
   onClose: () => void;
+  /** Initial coords from the map (optional). You can still change inside the modal. */
   latLng: { lat: number; lng: number } | null;
-  /** Called after a report is successfully created */
   onCreated: (report: Report) => void;
-  /**
-   * Optional: provide your own creator.
-   * If omitted, a local mock will be used (generates an object URL for the image).
-   */
   createReport?: (data: CreateInput) => Promise<Report>;
 };
 
@@ -74,14 +71,19 @@ export default function CreateReportModal({
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Local coords state — initialized from incoming prop
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(latLng);
+
   useEffect(() => {
     if (open) {
       setTitle("");
       setDesc("");
       setImage(null);
       setPreview(null);
+      // refresh initial coords when reopening
+      setCoords(latLng ?? null);
     }
-  }, [open]);
+  }, [open, latLng]);
 
   useEffect(() => {
     return () => {
@@ -90,7 +92,10 @@ export default function CreateReportModal({
   }, [preview]);
 
   const submit = async () => {
-    if (!latLng) return;
+    if (!coords) {
+      alert("Please pick a location by clicking on the map.");
+      return;
+    }
     if (!title.trim()) {
       alert("Please provide a report title.");
       return;
@@ -98,16 +103,14 @@ export default function CreateReportModal({
 
     setSaving(true);
     try {
-      // 1) Look up a human-readable address
-      const addr = await reverseGeocode(latLng.lat, latLng.lng);
+      const addr = await reverseGeocode(coords.lat, coords.lng);
 
-      // 2) If a creator was provided, use it; otherwise mock locally
       let created: Report;
       if (createReport) {
         created = await createReport({
           title: title.trim(),
           description: desc.trim(),
-          location: latLng,
+          location: coords,
           address: addr ?? undefined,
           user: { name: "You" },
           image,
@@ -120,7 +123,7 @@ export default function CreateReportModal({
           description: desc.trim(),
           created_at: new Date().toISOString(),
           status: "new",
-          location: latLng,
+          location: coords,
           address: addr ?? undefined,
           user: { name: "You" },
           image_url,
@@ -149,13 +152,24 @@ export default function CreateReportModal({
         <DialogHeader className="px-5 pt-5">
           <DialogTitle className="text-base sm:text-lg">New report</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            {latLng
-              ? `Clicked at: ${latLng.lat.toFixed(5)}, ${latLng.lng.toFixed(5)}`
-              : "Pick a location on the map."}
+            {coords
+              ? `Selected: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
+              : "Click on the map to drop a pin."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3 p-5 pt-3">
+          {/* Map: click to drop/move pin */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Incident location</label>
+            <ClickToPinMap
+              initial={coords ? [coords.lat, coords.lng] : null}
+              onChange={setCoords}
+              heightPx={280}
+              className="rounded-lg overflow-hidden"
+            />
+          </div>
+
           <label className="text-sm">
             Title
             <input
@@ -203,7 +217,7 @@ export default function CreateReportModal({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={saving || !latLng}>
+          <Button onClick={submit} disabled={saving || !coords}>
             {saving ? "Submitting…" : "Submit Report"}
           </Button>
         </div>

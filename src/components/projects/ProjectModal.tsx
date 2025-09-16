@@ -61,7 +61,7 @@ const ProjectModal: React.FC<Props> = ({
   onJoined,
   onSaveProject,
   onDeleteProject,
-  participants, // NOTE: no default [] here (prevents re-render loop)
+  participants,
   onChangeParticipantStatus,
 }) => {
   const [open, setOpen] = useState(true);
@@ -69,7 +69,7 @@ const ProjectModal: React.FC<Props> = ({
   const counts = project.counts ?? { joining: 0, might_go: 0, not_going: 0 };
   const isPast = useMemo(() => new Date(project.end_at) < new Date(), [project.end_at]);
 
-  // ----- USER ACTIONS (Overview tab) -----
+
   const disabledForGuest = role === "user" && !isAuthenticated;
   const disableUserActions = disabledForGuest || isPast;
 
@@ -148,13 +148,13 @@ const ProjectModal: React.FC<Props> = ({
     if (!ok) return;
     try {
       await onDeleteProject(project.id);
-      onClose(); // close after delete
+      onClose(); 
     } catch (e) {
       console.error("deleteProject error:", e);
     }
   };
 
-  // ----- ADMIN: PARTICIPANTS TAB -----
+
   const [localParticipants, setLocalParticipants] = useState<Participant[]>(
     () => participants ?? []
   );
@@ -174,7 +174,7 @@ const ProjectModal: React.FC<Props> = ({
       if (onChangeParticipantStatus) {
         await onChangeParticipantStatus(pid, status);
       } else {
-        // demo fallback: local update
+
         setLocalParticipants((arr) =>
           arr.map((p) => (p.id === pid ? { ...p, status } : p))
         );
@@ -184,7 +184,7 @@ const ProjectModal: React.FC<Props> = ({
     }
   };
 
-  // ----- LAYOUT -----
+
   const Overview = (
     <div className="space-y-4">
       {/* Notices */}

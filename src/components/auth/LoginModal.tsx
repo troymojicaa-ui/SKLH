@@ -1,49 +1,85 @@
-
-import { useState } from 'react';
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserCircle, Shield } from 'lucide-react';
+import { UserCircle, Shield } from "lucide-react"; // icons hidden on desktop
+import { supabase } from "@/lib/supabaseClient";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  role: 'admin' | 'user';
+  role: "admin" | "user"; // "user" is your Connect side
 }
 
 const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [isLoading, setIsLoading] = useState(false);        // password sign-in
+  const [isSendingLink, setIsSendingLink] = useState(false); // magic link
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const redirectAfterAuth = () => {
+    // Final redirect when using password login
+    const dest = role === "admin" ? "/admin/app" : "/connect/app";
+    window.location.href = dest;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    
-    // Allow blank login for testing
-    setTimeout(() => {
-      console.log(`Logging in as ${role}`);
-      setIsLoading(false);
-      onClose();
-      // Redirect based on role
-      window.location.href = role === 'admin' ? '/admin' : '/dashboard';
-    }, 500);
-  };
+    setMsg(null);
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (!email) {
+      setMsg("Please enter your email.");
+      return;
+    }
+
+    // If password is blank -> send magic link (passwordless)
+    if (!password.trim()) {
+      setIsSendingLink(true);
+      try {
+        // tell the callback where to go
+        const dest = role === "admin" ? "admin" : "connect";
+        const redirect = `${window.location.origin}/auth/callback?dest=${dest}`;
+
+        // also keep a local fallback in case the query param is lost
+        localStorage.setItem("post_login_dest", dest);
+
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser: false, // require existing account; set true to auto-create
+            emailRedirectTo: redirect, // MUST be allowed in Supabase Auth → URL Configuration
+          },
+        });
+        if (error) throw error;
+
+        setMsg("Magic link sent. Please check your email to complete sign-in.");
+      } catch (err: any) {
+        setMsg(err?.message ?? "Failed to send magic link. Please try again.");
+      } finally {
+        setIsSendingLink(false);
+      }
+      return;
+    }
+
+    // Otherwise, do normal password login
     setIsLoading(true);
-    
-    // Allow blank signup for testing
-    setTimeout(() => {
-      console.log(`Signing up as ${role}`);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data.session) {
+        redirectAfterAuth();
+        onClose();
+      } else {
+        setMsg("Login failed. Please try again.");
+      }
+    } catch (err: any) {
+      setMsg(err?.message ?? "Something went wrong. Please try again.");
+    } finally {
       setIsLoading(false);
-      onClose();
-      // Redirect based on role
-      window.location.href = role === 'admin' ? '/admin' : '/dashboard';
-    }, 500);
+    }
   };
 
   return (
@@ -51,90 +87,54 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
       <DialogContent className="sm:max-w-md bg-white rounded-lg shadow-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {role === 'admin' ? (
-              <Shield className="w-5 h-5 text-blue-600" />
+            {role === "admin" ? (
+              <Shield className="w-5 h-5 text-blue-600 md:hidden" />
             ) : (
-              <UserCircle className="w-5 h-5 text-purple-600" />
+              <UserCircle className="w-5 h-5 text-purple-600 md:hidden" />
             )}
-            {role === 'admin' ? 'SK Command Access' : 'SK Connect Login'}
+            <span>{role === "admin" ? "SK Command" : "SK Connect"}</span>
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
-          </TabsList>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <Label htmlFor="login-email">Email</Label>
+            <Input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+            />
+          </div>
 
-          <TabsContent value="login" className="space-y-4">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <Label htmlFor="login-email">Email</Label>
-                <Input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email (optional for testing)"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="login-password">Password</Label>
-                <Input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password (optional for testing)"
-                />
-              </div>
+          <div>
+            <Label htmlFor="login-password">Password</Label>
+            <Input
+              id="login-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Leave blank for magic link"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leave blank to receive a sign-in link via email.
+            </p>
+          </div>
 
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Logging in...' : `Login to ${role === 'admin' ? 'SK Command' : 'SK Connect'}`}
-              </Button>
-            </form>
-          </TabsContent>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || isSendingLink}
+          >
+            {isLoading ? "Signing in…" : isSendingLink ? "Sending link…" : "Login / Send Magic Link"}
+          </Button>
 
-          <TabsContent value="signup" className="space-y-4">
-            <form onSubmit={handleSignup} className="space-y-4">
-              <div>
-                <Label htmlFor="signup-email">Email</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email (optional for testing)"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="signup-password">Password</Label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a password (optional for testing)"
-                />
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={isLoading}
-                variant="outline"
-              >
-                {isLoading ? 'Creating account...' : 'Create Account'}
-              </Button>
-            </form>
-          </TabsContent>
-        </Tabs>
+          {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
+        </form>
       </DialogContent>
     </Dialog>
   );
