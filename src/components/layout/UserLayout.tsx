@@ -4,7 +4,6 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Home,
-  FileText,
   ShieldAlert,
   User as UserIcon,
   LogOut,
@@ -18,7 +17,7 @@ import circleLogo from "@/assets/circle logo.png"; // mobile header logo
 
 const UserLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false); // desktop sidebar only
-  const [menuOpen, setMenuOpen] = useState(false);       // mobile dropdown
+  const [menuOpen, setMenuOpen] = useState(false); // mobile dropdown
   const menuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
@@ -34,9 +33,9 @@ const UserLayout = () => {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: Home },
-    { name: "Events", href: "/dashboard/events", icon: CalendarDays },     // NEW
-    { name: "Projects", href: "/dashboard/projects", icon: FileText },
-    { name: "Facilities", href: "/dashboard/facilities", icon: Building2 }, // NEW
+    { name: "Events", href: "/dashboard/events", icon: CalendarDays },
+    // Projects removed
+    { name: "Facilities", href: "/dashboard/facilities", icon: Building2 },
     { name: "Reports", href: "/dashboard/report", icon: ShieldAlert },
     { name: "Profile", href: "/dashboard/profile", icon: UserIcon },
   ];
@@ -146,16 +145,7 @@ const UserLayout = () => {
                 <CalendarDays className="h-5 w-5" />
                 Events
               </button>
-              <button
-                className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
-                onClick={() => {
-                  setMenuOpen(false);
-                  navigate("/dashboard/projects");
-                }}
-              >
-                <FileText className="h-5 w-5" />
-                Projects
-              </button>
+              {/* Projects removed */}
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {

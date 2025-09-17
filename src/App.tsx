@@ -17,7 +17,7 @@ import Mission from "./pages/Mission";
 import PublicProjects from "./pages/PublicProjects";
 import PublicProjectDetail from "./pages/PublicProjectDetail";
 import PublicEvents from "./pages/PublicEvents";
-import MobileHome from "./pages/MobileHome"; // 👈 mobile homepage
+import MobileHome from "./pages/MobileHome"; // Mobile homepage
 
 // Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -26,7 +26,6 @@ import Projects from "./pages/admin/Projects";
 import EditAboutUs from "./pages/admin/EditAboutUs";
 import CalendarPage from "./pages/admin/Calendar";
 import Reports from "./pages/admin/Reports";
-import AdminAddresses from "@/pages/admin/AdminAddresses";
 import AdminFacilities from "@/pages/admin/Facilities"; // if present
 
 // User pages
@@ -35,10 +34,12 @@ import UserProjects from "./pages/user/Projects";
 import UserRAI from "./pages/user/RAI";
 import UserProfile from "./pages/user/Profile";
 import ReportCreate from "./pages/user/ReportCreate";
+import ReportSuccess from "./pages/user/ReportSuccess"; // ✅ NEW confirmation screen
+import ReportDetail from "./pages/user/ReportDetail";   // ✅ NEW per-report page
 import Events from "./pages/user/Events";
 import Facilities from "./pages/user/Facilities";
 
-// 🔐 Inline auth helpers (no extra files/imports to break)
+// Auth helpers
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 
@@ -46,7 +47,6 @@ const queryClient = new QueryClient();
 
 function RootRouterGate() {
   const isMobile = useIsMobile();
-  // Mobile now lands on a lightweight mobile homepage instead of the Connect login
   return isMobile ? <MobileHome /> : <Index />;
 }
 
@@ -66,14 +66,12 @@ function CodeProxy() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code && window.location.pathname !== "/auth/callback") {
-      // preserve all existing query params (code, dest, etc.)
       window.location.replace(`/auth/callback${window.location.search}`);
     }
   }, []);
   return null;
 }
 
-/** Helper: wait a tick for Supabase to persist the session */
 async function waitForSession(timeoutMs = 3000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -84,7 +82,6 @@ async function waitForSession(timeoutMs = 3000) {
   return null;
 }
 
-/** AuthCallback (inline) */
 function AuthCallback() {
   const [error, setError] = useState<string | null>(null);
 
@@ -93,14 +90,13 @@ function AuthCallback() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
       const desc = params.get("error_description");
-      const urlDest = params.get("dest"); // "admin" | "connect"
+      const urlDest = params.get("dest");
 
       if (desc) {
         setError(desc);
         return;
       }
 
-      // If there's no code but we already have a session, route in.
       if (!code) {
         const { data: sessionRes } = await supabase.auth.getSession();
         if (sessionRes?.session) {
@@ -111,14 +107,12 @@ function AuthCallback() {
         return;
       }
 
-      // Normal flow: exchange the magic-link code for a session
       const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
       if (exErr) {
         setError(exErr.message);
         return;
       }
 
-      // Ensure the session is ready (prevents guards from bouncing you to "/")
       const session = await waitForSession();
       if (!session) {
         setError("Signed in, but session was not ready. Please try the link again.");
@@ -130,7 +124,6 @@ function AuthCallback() {
   }, []);
 
   async function routeToPortal(prefDest: "admin" | "connect" | null) {
-    // Prefer explicit dest from URL/localStorage; fallback to profile role.
     let dest: "admin" | "connect" =
       prefDest ||
       (localStorage.getItem("post_login_dest") as any) ||
@@ -150,10 +143,7 @@ function AuthCallback() {
       }
     }
 
-    // Final redirect (matches your routes)
     const path = dest === "admin" ? "/admin/app" : "/dashboard";
-
-    // Clear temp and force a hard navigation so any guards re-evaluate with session present
     localStorage.removeItem("post_login_dest");
     window.location.href = `${path}?t=${Date.now()}`;
   }
@@ -174,7 +164,6 @@ function AuthCallback() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Global catcher for code on the wrong route */}
       <CodeProxy />
 
       <Routes>
@@ -188,13 +177,13 @@ export default function App() {
         <Route path="/projects/:id" element={<PublicProjectDetail />} />
         <Route path="/events" element={<PublicEvents />} />
 
-        {/* 🔐 Auth callback for magic links */}
+        {/* Auth callback */}
         <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Admin login */}
         <Route path="/admin" element={<AdminLoginRoute />} />
 
-        {/* Admin app (auth-gated + role-gated). Child paths are RELATIVE */}
+        {/* Admin app */}
         <Route path="/admin/app" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="reports" element={<Reports />} />
@@ -202,17 +191,18 @@ export default function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="about" element={<EditAboutUs />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="addresses" element={<AdminAddresses />} />
           <Route path="facilities" element={<AdminFacilities />} />
         </Route>
 
-        {/* User dashboard (auth-gated). Child paths are RELATIVE */}
+        {/* User dashboard */}
         <Route path="/dashboard" element={<UserLayout />}>
           <Route index element={<UserDashboard />} />
           <Route path="events" element={<Events />} />
           <Route path="projects" element={<UserProjects />} />
           <Route path="report" element={<UserRAI />} />
           <Route path="report/new" element={<ReportCreate />} />
+          <Route path="report/success" element={<ReportSuccess />} /> {/* ✅ NEW */}
+          <Route path="report/:id" element={<ReportDetail />} />      {/* ✅ NEW */}
           <Route path="profile" element={<UserProfile />} />
           <Route path="facilities" element={<Facilities />} />
         </Route>

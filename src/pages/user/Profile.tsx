@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthProvider";
 
@@ -6,20 +6,22 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 type ProfileRow = {
-  id: string;                // auth.users id
+  id: string;                 // auth.users id
   avatar_url: string | null;
-  bio: string | null;
+  full_name: string | null;   // source of truth for name
+  contact_number: string | null;
+  birth_date: string | null;  // 'YYYY-MM-DD'
+  role?: string | null;       // used to detect admin
 };
 
 type AddressRow = {
   user_id: string;
-  street: string | null;
+  street: string | null;      // we store the entire address line here
   number: string | null;
-  barangay: string;
-  city: string;
+  barangay: string | null;    // NOT NULL in your DB (we ensure non-null on write)
+  city: string | null;        // we ensure non-null on write
 };
 
 export default function ProfilePage() {
@@ -34,13 +36,28 @@ export default function ProfilePage() {
   // form fields
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [bio, setBio] = useState("");
 
-  // address (private)
-  const [street, setStreet] = useState("");
-  const [number, setNumber] = useState("");
-  const [barangay, setBarangay] = useState("Loyola Heights");
-  const [city, setCity] = useState("Quezon City");
+  const [fullName, setFullName] = useState("");
+  const [contactNumber, setContactNumber] = useState("");
+  const [birthDate, setBirthDate] = useState(""); // YYYY-MM-DD
+
+  const email = user?.email ?? ""; // read-only display
+
+  // address (private) — as a single line
+  const [addressLine, setAddressLine] = useState("");
+
+  // role
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // snapshot for Cancel
+  const originalRef = useRef<any>(null);
+
+  const displayName = useMemo(() => {
+    // Show the real name from DB if present; otherwise auth metadata
+    if (fullName.trim()) return fullName.trim();
+    const meta = (user?.user_metadata ?? {}) as Record<string, any>;
+    return (meta.full_name || meta.name || "").trim() || "Profile";
+  }, [fullName, user?.user_metadata]);
 
   useEffect(() => {
     if (!user) return;
@@ -49,30 +66,54 @@ export default function ProfilePage() {
       setErr(null);
       setOk(null);
       try {
-        // 1) load public-ish profile fields
+        // Load profile (NO 'name' column)
         const { data: prof, error: pErr } = await supabase
           .from("profiles")
-          .select("id, avatar_url, bio")
+          .select("id, avatar_url, full_name, contact_number, birth_date, role")
           .eq("id", user.id)
           .single();
+
         if (pErr) throw pErr;
+
         const pr = prof as ProfileRow;
         setAvatarUrl(pr.avatar_url ?? null);
-        setBio(pr.bio ?? "");
 
-        // 2) load private address (owner allowed by RLS)
+        // prefer DB full_name; fallback to auth metadata so the field isn't blank
+        const meta = (user.user_metadata ?? {}) as Record<string, any>;
+        const fallbackName = (meta.full_name || meta.name || "") as string;
+        setFullName((pr.full_name ?? fallbackName ?? "").trim());
+
+        setContactNumber(pr.contact_number ?? "");
+        setBirthDate(pr.birth_date ?? "");
+
+        // admin detection from either profiles.role or auth metadata role
+        const metaRole = String(meta.role || "").toLowerCase();
+        setIsAdmin(((pr.role ?? "").toLowerCase() === "admin") || metaRole === "admin");
+
+        // Load private address (owner allowed by RLS)
         const { data: addr, error: aErr } = await supabase
           .from("user_addresses")
           .select("user_id, street, number, barangay, city")
           .eq("user_id", user.id)
           .maybeSingle();
+
         if (aErr) throw aErr;
 
         const A = (addr ?? {}) as Partial<AddressRow>;
-        setStreet(A.street ?? "");
-        setNumber(A.number ?? "");
-        setBarangay(A.barangay ?? "Loyola Heights");
-        setCity(A.city ?? "Quezon City");
+        const joined =
+          A.street ??
+          [A.number, A.street, A.barangay, A.city].filter(Boolean).join(", ");
+        setAddressLine(joined || "");
+
+        // Snapshot for Cancel
+        originalRef.current = {
+          avatarUrl: pr.avatar_url ?? null,
+          fullName: (pr.full_name ?? fallbackName ?? "").trim(),
+          contactNumber: pr.contact_number ?? "",
+          birthDate: pr.birth_date ?? "",
+          addressLine: joined || "",
+          isAdmin: ((pr.role ?? "").toLowerCase() === "admin") || metaRole === "admin",
+        };
       } catch (e: any) {
         setErr(e?.message ?? "Failed to load profile.");
       } finally {
@@ -85,6 +126,21 @@ export default function ProfilePage() {
     return <Card className="p-4">Please sign in to edit your profile.</Card>;
   }
 
+  function onCancel(e: React.MouseEvent) {
+    e.preventDefault();
+    const o = originalRef.current;
+    if (!o) return;
+    setAvatarUrl(o.avatarUrl);
+    setAvatarFile(null);
+    setFullName(o.fullName);
+    setContactNumber(o.contactNumber);
+    setBirthDate(o.birthDate);
+    setAddressLine(o.addressLine);
+    setIsAdmin(o.isAdmin);
+    setErr(null);
+    setOk(null);
+  }
+
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -94,7 +150,7 @@ export default function ProfilePage() {
     try {
       let newAvatarUrl = avatarUrl;
 
-      // 1) Upload avatar if a new file is chosen
+      // Upload avatar if new file chosen
       if (avatarFile) {
         const ext = (avatarFile.name.split(".").pop() || "jpg").toLowerCase();
         const path = `${user.id}/avatar-${Date.now()}.${ext}`;
@@ -103,32 +159,55 @@ export default function ProfilePage() {
           .upload(path, avatarFile, { cacheControl: "3600", upsert: false });
         if (upErr) throw upErr;
 
-        const { data: pub } = supabase.storage.from("profile-photos").getPublicUrl(path);
+        const { data: pub } = supabase.storage
+          .from("profile-photos")
+          .getPublicUrl(path);
         newAvatarUrl = pub?.publicUrl ?? null;
         setAvatarUrl(newAvatarUrl);
       }
 
-      // 2) Update profile (bio + avatar url)
+      // Build profile payload; only admins may change full_name
+      const payload: Record<string, any> = {
+        avatar_url: newAvatarUrl ?? null,
+        contact_number: contactNumber || null,
+        birth_date: birthDate || null, // expects 'YYYY-MM-DD'
+      };
+      if (isAdmin) {
+        payload.full_name = fullName || null;
+      }
+
       const { error: profErr } = await supabase
         .from("profiles")
-        .update({
-          bio: bio || null,
-          avatar_url: newAvatarUrl ?? null,
-        })
+        .update(payload)
         .eq("id", user.id);
       if (profErr) throw profErr;
 
-      // 3) Upsert private address
+      // Upsert private address (ensure required fields are never null)
+      const barangayValue =
+        /loyola heights/i.test(addressLine) ? "Loyola Heights" : "Unknown";
+      const cityValue =
+        /quezon\s*city/i.test(addressLine) ? "Quezon City" : "Quezon City";
+
       const { error: addrErr } = await supabase
         .from("user_addresses")
         .upsert({
           user_id: user.id,
-          street: street || null,
-          number: number || null,
-          barangay: barangay || "Loyola Heights",
-          city: city || "Quezon City",
+          street: addressLine || null,
+          number: null,
+          barangay: barangayValue, // never null
+          city: cityValue,         // never null
         });
       if (addrErr) throw addrErr;
+
+      // Refresh snapshot
+      originalRef.current = {
+        avatarUrl: newAvatarUrl ?? null,
+        fullName,
+        contactNumber,
+        birthDate,
+        addressLine,
+        isAdmin,
+      };
 
       setOk("Profile saved!");
     } catch (e: any) {
@@ -139,19 +218,16 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-4">
-      <h1 className="text-2xl font-semibold mb-4">Your Profile</h1>
-
-      <Card className="p-4 space-y-4">
+    <div className="max-w-sm sm:max-w-md mx-auto p-4">
+      <Card className="p-6 sm:p-8">
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
         ) : (
-          <form onSubmit={onSave} className="space-y-4">
-            {/* Avatar */}
-            <div>
-              <Label>Avatar</Label>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="h-16 w-16 rounded-full overflow-hidden bg-gray-100">
+          <form onSubmit={onSave} className="space-y-5">
+            {/* Avatar + name header */}
+            <div className="flex flex-col items-center">
+              <div className="relative">
+                <div className="h-24 w-24 rounded-full overflow-hidden ring-4 ring-white shadow">
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
@@ -160,83 +236,108 @@ export default function ProfilePage() {
                       onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
                     />
                   ) : (
-                    <div className="h-full w-full grid place-items-center text-xs text-muted-foreground">
+                    <div className="h-full w-full grid place-items-center text-xs text-muted-foreground bg-slate-100">
                       No image
                     </div>
                   )}
                 </div>
+                {/* Pencil overlay */}
+                <label
+                  htmlFor="avatar-input"
+                  className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-white shadow grid place-items-center cursor-pointer"
+                  title="Change photo"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-700" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 000-1.42l-2.34-2.34a1.003 1.003 0 00-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
+                  </svg>
+                </label>
                 <input
+                  id="avatar-input"
                   type="file"
                   accept="image/*"
+                  className="hidden"
                   onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              <h2 className="mt-4 text-2xl font-semibold tracking-wide">{displayName}</h2>
+            </div>
+
+            {/* Full Name (admin-only editable) */}
+            <div>
+              <Label className="text-sm">Full Name</Label>
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className={`mt-1 ${!isAdmin ? "bg-slate-50 cursor-not-allowed" : ""}`}
+                placeholder="Your full name"
+                readOnly={!isAdmin}
+                disabled={!isAdmin}
+                onFocus={(e) => { if (!isAdmin) e.currentTarget.blur(); }}
+                onKeyDown={(e) => { if (!isAdmin) e.preventDefault(); }}
+              />
+              {!isAdmin && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Only administrators can change your name.
+                </p>
+              )}
+            </div>
+
+            {/* Birth date + Contact */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm">Birth Date</Label>
+                <Input
+                  type="date"
+                  value={birthDate || ""}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Contact Number</Label>
+                <Input
+                  value={contactNumber}
+                  onChange={(e) => setContactNumber(e.target.value)}
+                  className="mt-1"
+                  placeholder="e.g., 0999 999 9999"
                 />
               </div>
             </div>
 
-            {/* Bio (optional) */}
+            {/* Email */}
             <div>
-              <Label htmlFor="bio">Bio (optional)</Label>
-              <Textarea
-                id="bio"
-                rows={4}
-                placeholder="Tell something about yourself…"
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="mt-1"
-              />
+              <Label className="text-sm">Email</Label>
+              <Input value={email} readOnly className="mt-1 bg-slate-50" />
             </div>
 
-            {/* Address (private) */}
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Address (private)</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="street">Street</Label>
-                  <Input
-                    id="street"
-                    value={street}
-                    onChange={(e) => setStreet(e.target.value)}
-                    placeholder="e.g., J. Escaler Street"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="number">Number</Label>
-                  <Input
-                    id="number"
-                    value={number}
-                    onChange={(e) => setNumber(e.target.value)}
-                    placeholder="e.g., 123"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="barangay">Barangay</Label>
-                  <Input
-                    id="barangay"
-                    value={barangay}
-                    onChange={(e) => setBarangay(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Your address is visible only to you and admins.
+            {/* Address (single line) */}
+            <div>
+              <Label className="text-sm">Address</Label>
+              <Input
+                value={addressLine}
+                onChange={(e) => setAddressLine(e.target.value)}
+                className="mt-1"
+                placeholder="Krus Na Ligas, Diliman, Quezon City, Philippines"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
               </p>
             </div>
 
-            <div className="flex gap-2">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Save changes"}
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={onCancel}
+                className="text-sm text-slate-600 hover:text-slate-900 underline underline-offset-2"
+              >
+                Cancel
+              </button>
+              <Button
+                type="submit"
+                className="px-6 bg-[#13294B] hover:bg-[#0F2140]"
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save Edit"}
               </Button>
             </div>
 

@@ -6,9 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-import { Plus, Upload, Trash2, Save, Clock, Image as ImageIcon } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  Clock,
+} from "lucide-react";
+
+// shadcn dialog
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 type Facility = {
   id: string;
@@ -39,7 +61,6 @@ type FacilityHour = {
 const DOW_LABEL = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] as const;
 
 function getManilaNow() {
-  // Current time in Asia/Manila
   const now = new Date();
   return new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
 }
@@ -47,7 +68,7 @@ function getManilaNow() {
 function isOpenNow(hours: FacilityHour[] | undefined): { open: boolean; today: string } {
   if (!hours || hours.length === 0) return { open: false, today: "Closed" };
   const manila = getManilaNow();
-  const dow = manila.getDay(); // 0=Sun
+  const dow = manila.getDay();
   const h = hours.find((x) => x.dow === dow);
   if (!h || !h.open_time || !h.close_time) return { open: false, today: "Closed" };
 
@@ -55,14 +76,11 @@ function isOpenNow(hours: FacilityHour[] | undefined): { open: boolean; today: s
   const [ch, cm] = h.close_time.split(":").map(Number);
   const openMin = oh * 60 + om;
   const closeMin = ch * 60 + cm;
-
   const curMin = manila.getHours() * 60 + manila.getMinutes();
 
-  // Support overnight: if close < open, treat as crossing midnight
   const openNow =
-    closeMin >= openMin
-      ? curMin >= openMin && curMin < closeMin
-      : curMin >= openMin || curMin < closeMin;
+    closeMin >= openMin ? curMin >= openMin && curMin < closeMin
+                        : curMin >= openMin || curMin < closeMin;
 
   const label =
     h.open_time && h.close_time
@@ -84,6 +102,16 @@ export default function AdminFacilities() {
   const [hours, setHours] = useState<FacilityHour[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // --- NEW: local photo order state for drag&drop ---
+  const [orderedPhotos, setOrderedPhotos] = useState<FacilityPhoto[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const photoIdsOriginal = useMemo(
+    () => (editing?.facility_photos ?? []).slice().sort((a,b)=>a.sort_order-b.sort_order).map(p=>p.id).join(","),
+    [editing]
+  );
+  const photoIdsCurrent = orderedPhotos.map(p=>p.id).join(",");
+  const orderChanged = photoIdsCurrent !== photoIdsOriginal && orderedPhotos.length > 0;
 
   useEffect(() => { load(); }, []);
 
@@ -112,6 +140,7 @@ export default function AdminFacilities() {
     setEditing(f ?? null);
     setName(f?.name ?? "");
     setDescription(f?.description ?? "");
+
     const base: FacilityHour[] =
       f?.facility_hours && f.facility_hours.length
         ? f.facility_hours
@@ -121,7 +150,7 @@ export default function AdminFacilities() {
             open_time: null,
             close_time: null,
           }));
-    // Ensure all dows exist
+
     const map = new Map(base.map((x) => [x.dow, x]));
     const full = Array.from({ length: 7 }, (_, dow) => map.get(dow) ?? ({
       facility_id: f?.id ?? "",
@@ -131,11 +160,16 @@ export default function AdminFacilities() {
     }));
     setHours(full);
     setFiles([]);
+
+    // NEW: init ordered photos from editing row
+    const photos = (f?.facility_photos ?? []).slice().sort((a,b)=>a.sort_order-b.sort_order);
+    setOrderedPhotos(photos);
+    setDragIndex(null);
   }
 
   async function onCreate() {
     resetEditor(null);
-    setEditing({} as any); // open editor
+    setEditing({} as any); // open modal
   }
 
   async function onEdit(f: Facility) {
@@ -158,7 +192,6 @@ export default function AdminFacilities() {
       let facilityId = editing?.id ?? null;
 
       if (!facilityId) {
-        // Create facility
         const { data, error } = await supabase
           .from("facilities")
           .insert({ name, description: description || null })
@@ -167,7 +200,6 @@ export default function AdminFacilities() {
         if (error) throw error;
         facilityId = data!.id as string;
       } else {
-        // Update facility
         const { error } = await supabase
           .from("facilities")
           .update({ name, description: description || null })
@@ -175,7 +207,6 @@ export default function AdminFacilities() {
         if (error) throw error;
       }
 
-      // Upsert 7 rows of hours
       const upserts = hours.map((h) => ({
         facility_id: facilityId!,
         dow: h.dow,
@@ -202,7 +233,7 @@ export default function AdminFacilities() {
           facility_id: facilityId,
           url,
           path,
-          sort_order: i,
+          sort_order: i, // appended after existing
         });
         if (pErr) throw pErr;
       }
@@ -219,10 +250,8 @@ export default function AdminFacilities() {
   async function removePhoto(photo: FacilityPhoto) {
     if (!confirm("Remove this photo?")) return;
     try {
-      // Delete DB row first (RLS admin-only)
       const { error } = await supabase.from("facility_photos").delete().eq("id", photo.id);
       if (error) throw error;
-      // Then storage (best effort)
       if (photo.path) {
         await supabase.storage.from("facility-photos").remove([photo.path]);
       }
@@ -233,6 +262,41 @@ export default function AdminFacilities() {
       }
     } catch (e: any) {
       alert(e?.message ?? "Failed to delete photo.");
+    }
+  }
+
+  // --- NEW: drag & drop handlers for orderedPhotos ---
+  function onDragStart(index: number) {
+    setDragIndex(index);
+  }
+  function onDragEnter(index: number) {
+    if (dragIndex === null || dragIndex === index) return;
+    setOrderedPhotos((prev) => {
+      const arr = prev.slice();
+      const [moved] = arr.splice(dragIndex, 1);
+      arr.splice(index, 0, moved);
+      setDragIndex(index);
+      return arr;
+    });
+  }
+  function onDragEnd() {
+    setDragIndex(null);
+  }
+
+  async function savePhotoOrder() {
+    if (!editing?.id) return;
+    try {
+      const p_ids = orderedPhotos.map((p) => p.id);
+      const { error } = await supabase.rpc("facility_photos_reorder", {
+        p_facility: editing.id,
+        p_ids,
+      });
+      if (error) throw error;
+      await load();
+      const fresh = rows.find((r) => r.id === editing.id);
+      if (fresh) resetEditor(fresh);
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to save order.");
     }
   }
 
@@ -305,119 +369,168 @@ export default function AdminFacilities() {
         </CardContent>
       </Card>
 
-      {/* Editor */}
-      {editing && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{editing?.id ? "Edit Facility" : "New Facility"}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={saveFacility} className="space-y-5">
-              <div>
-                <label className="text-sm font-medium">Name</label>
-                <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} required />
+      {/* Modal Editor */}
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{editing?.id ? "Edit Facility" : "New Facility"}</DialogTitle>
+            <DialogDescription>
+              Add details, set weekly hours, upload photos; drag photos to reorder.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={saveFacility} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left: Basics + Photos */}
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Name</label>
+                  <Input
+                    className="mt-1"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Barangay Gym"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">Description</label>
+                  <Textarea
+                    className="mt-1"
+                    rows={6}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describe this facility…"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">New images (max 10)</label>
+                  <div className="mt-2 flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 10))}
+                    />
+                    <Badge variant="secondary">{files.length} to upload</Badge>
+                  </div>
+
+                  {/* Existing images with drag & drop */}
+                  {orderedPhotos.length > 0 && (
+                    <>
+                      <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {orderedPhotos.map((p, idx) => (
+                          <div
+                            key={p.id}
+                            className={`relative rounded border overflow-hidden bg-gray-50 ${
+                              dragIndex === idx ? "opacity-70 ring-2 ring-sky-500" : ""
+                            }`}
+                            draggable
+                            onDragStart={() => onDragStart(idx)}
+                            onDragEnter={() => onDragEnter(idx)}
+                            onDragEnd={onDragEnd}
+                            onDragOver={(e) => e.preventDefault()}
+                            title="Drag to reorder"
+                          >
+                            <img
+                              src={p.url}
+                              alt=""
+                              className="w-full h-28 object-cover"
+                              onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+                            />
+                            <div className="absolute left-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white">
+                              {idx + 1}
+                            </div>
+                            <div className="absolute inset-x-0 bottom-0 p-1 flex justify-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => removePhoto(p)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          Tip: drag cards to change the display order.
+                        </span>
+                        <Button
+                          type="button"
+                          variant={orderChanged ? "default" : "outline"}
+                          disabled={!orderChanged || !editing?.id}
+                          onClick={savePhotoOrder}
+                        >
+                          {orderChanged ? "Save order" : "Order saved"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium">Description</label>
-                <Textarea
-                  className="mt-1"
-                  rows={4}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe this facility…"
-                />
-              </div>
+              {/* Right: Weekly Hours */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Weekly Hours</label>
+                </div>
 
-              <div>
-                <label className="text-sm font-medium">Weekly Hours</label>
-                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-2">
                   {hours.map((h) => (
-                    <div key={h.dow} className="flex items-center gap-3">
-                      <div className="w-16 text-sm">{DOW_LABEL[h.dow]}</div>
+                    <div key={h.dow} className="flex items-center gap-3 rounded border bg-white p-2">
+                      <div className="w-12 shrink-0 text-sm font-medium">{DOW_LABEL[h.dow]}</div>
                       <Input
                         type="time"
                         value={h.open_time?.slice(0,5) ?? ""}
                         onChange={(e) => handleHourChange(h.dow, "open_time", e.target.value ? e.target.value + ":00" : "")}
+                        className="w-28"
                       />
-                      <span className="text-sm">to</span>
+                      <span className="text-sm text-muted-foreground">to</span>
                       <Input
                         type="time"
                         value={h.close_time?.slice(0,5) ?? ""}
                         onChange={(e) => handleHourChange(h.dow, "close_time", e.target.value ? e.target.value + ":00" : "")}
+                        className="w-28"
                       />
                       <Button
                         type="button"
                         variant="ghost"
-                        className="text-xs"
-                        onClick={() => handleHourChange(h.dow, "open_time", "") || handleHourChange(h.dow, "close_time", "")}
+                        className="ml-auto h-8 px-2 text-xs"
+                        onClick={() => {
+                          handleHourChange(h.dow, "open_time", "");
+                          handleHourChange(h.dow, "close_time", "");
+                        }}
                       >
                         Closed
                       </Button>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+
+                <p className="text-xs text-muted-foreground">
                   Leave a day “Closed” by clearing both times. Overnight (e.g., 20:00–02:00) is supported.
                 </p>
               </div>
+            </div>
 
-              <div>
-                <label className="text-sm font-medium">Images (max 10)</label>
-                <div className="mt-2 flex items-center gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 10))}
-                  />
-                  <Badge variant="secondary">
-                    {files.length} to upload
-                  </Badge>
-                </div>
-
-                {/* Existing images */}
-                {editing?.facility_photos && editing.facility_photos.length > 0 && (
-                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {editing.facility_photos
-                      .sort((a,b) => a.sort_order - b.sort_order)
-                      .map((p) => (
-                        <div key={p.id} className="relative rounded border overflow-hidden">
-                          <img
-                            src={p.url}
-                            alt=""
-                            className="w-full h-32 object-cover bg-gray-50"
-                            onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-                          />
-                          <div className="absolute inset-x-0 bottom-0 p-1 flex justify-end">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => removePhoto(p)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <Button type="submit" disabled={saving}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setEditing(null)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                <Save className="h-4 w-4 mr-2" />
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

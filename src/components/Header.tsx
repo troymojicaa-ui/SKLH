@@ -43,12 +43,7 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
             >
               About
             </Link>
-            <Link
-              to="/projects"
-              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-            >
-              Projects
-            </Link>
+            {/* Projects removed */}
             <Link
               to="/events"
               className="text-sm font-medium text-white/90 hover:text-white transition-colors"
@@ -95,13 +90,7 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
               >
                 About
               </Link>
-              <Link
-                to="/projects"
-                onClick={() => setMenuOpen(false)}
-                className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-              >
-                Projects
-              </Link>
+              {/* Projects removed */}
               <Link
                 to="/events"
                 onClick={() => setMenuOpen(false)}

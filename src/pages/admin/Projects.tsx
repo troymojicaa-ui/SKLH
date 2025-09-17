@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthProvider";
-
 import { format, isAfter } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +12,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, RefreshCcw, Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 
-/* ====================== Types (DB) ====================== */
 type Status = "draft" | "published" | "archived";
 type Visibility = "public" | "private";
 
@@ -25,19 +23,16 @@ type DBProject = {
   summary: string | null;
   body: string | null;
   cover_url: string | null;
-  cover_path: string | null;   // NEW (for storage cleanup)
+  cover_path: string | null;
   status: Status;
-  start_date: string | null;   // yyyy-mm-dd
-  end_date: string | null;     // yyyy-mm-dd
+  start_date: string | null;
+  end_date: string | null;
   visibility: Visibility;
   created_by: string | null;
-  created_at: string;          // ISO
-  updated_at: string;          // ISO
+  created_at: string;
+  updated_at: string;
 };
 
-/* ========================================================
-   Create Project Modal
-======================================================== */
 function CreateProjectModal({
   open,
   onClose,
@@ -48,7 +43,7 @@ function CreateProjectModal({
   onSave: (data: {
     title: string;
     summary: string;
-    start_date: string; // yyyy-mm-dd
+    start_date: string;
     end_date?: string;
     status: Status;
     visibility: Visibility;
@@ -57,7 +52,7 @@ function CreateProjectModal({
 }) {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
-  const [date, setDate] = useState(""); // start_date
+  const [date, setDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState<Status>("draft");
   const [visibility, setVisibility] = useState<Visibility>("public");
@@ -129,7 +124,7 @@ function CreateProjectModal({
               Start date *
               <input
                 type="date"
-                className="mt-1 w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2 bg-white"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
@@ -138,7 +133,7 @@ function CreateProjectModal({
               End date (optional)
               <input
                 type="date"
-                className="mt-1 w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2 bg-white"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
@@ -194,9 +189,6 @@ function CreateProjectModal({
   );
 }
 
-/* ========================================================
-   Edit Project Modal
-======================================================== */
 function EditProjectModal({
   open,
   onClose,
@@ -227,7 +219,6 @@ function EditProjectModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // refresh when a different project is opened
     setTitle(project.title);
     setSummary(project.summary ?? "");
     setStart(project.start_date ?? "");
@@ -300,7 +291,7 @@ function EditProjectModal({
               Start date
               <input
                 type="date"
-                className="mt-1 w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2 bg-white"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
@@ -309,7 +300,7 @@ function EditProjectModal({
               End date
               <input
                 type="date"
-                className="mt-1 w-full border rounded p-2"
+                className="mt-1 w-full border rounded p-2 bg-white"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
@@ -365,9 +356,6 @@ function EditProjectModal({
   );
 }
 
-/* ========================================================
-   Delete Confirm Modal
-======================================================== */
 function ConfirmDeleteDialog({
   open,
   onClose,
@@ -409,21 +397,19 @@ function ConfirmDeleteDialog({
   );
 }
 
-/* ========================================================
-   Page
-======================================================== */
 export default function AdminProjects() {
   const { session } = useAuth();
   const [rows, setRows] = useState<DBProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // modals
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [toEdit, setToEdit] = useState<DBProject | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete] = useState<DBProject | null>(null);
+
+  const outlineLight = "bg-white text-black border border-gray-300 hover:bg-gray-50";
 
   async function load() {
     setLoading(true);
@@ -443,15 +429,18 @@ export default function AdminProjects() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
-  // realtime refresh
   useEffect(() => {
     const ch = supabase
       .channel("projects-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, () => load())
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+    };
   }, []);
 
   const upcoming = useMemo(
@@ -464,23 +453,29 @@ export default function AdminProjects() {
   );
 
   async function createProject(payload: {
-    title: string; summary: string; start_date: string; end_date?: string;
-    status: Status; visibility: Visibility; file?: File | null;
+    title: string;
+    summary: string;
+    start_date: string;
+    end_date?: string;
+    status: Status;
+    visibility: Visibility;
+    file?: File | null;
   }) {
-    if (!session) { alert("You must be logged in."); return; }
+    if (!session) {
+      alert("You must be logged in.");
+      return;
+    }
 
     try {
-      // Upload cover if provided
       let coverUrl: string | null = null;
       let coverPath: string | null = null;
 
       if (payload.file) {
         const ext = (payload.file.name.split(".").pop() || "jpg").toLowerCase();
         const path = `${session.user.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("project-images").upload(path, payload.file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        const { error: upErr } = await supabase.storage
+          .from("project-images")
+          .upload(path, payload.file, { cacheControl: "3600", upsert: false });
         if (upErr) throw upErr;
         const { data: pub } = supabase.storage.from("project-images").getPublicUrl(path);
         coverUrl = pub.publicUrl;
@@ -492,7 +487,7 @@ export default function AdminProjects() {
         summary: payload.summary || null,
         body: null,
         cover_url: coverUrl,
-        cover_path: coverPath,      // NEW
+        cover_path: coverPath,
         status: payload.status,
         start_date: payload.start_date,
         end_date: payload.end_date ?? null,
@@ -525,22 +520,18 @@ export default function AdminProjects() {
     let cover_path = current.cover_path;
 
     try {
-      // 1) If replacing cover, upload new first
       if (data.newFile) {
         const ext = (data.newFile.name.split(".").pop() || "jpg").toLowerCase();
         const newPath = `${session.user.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("project-images").upload(newPath, data.newFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        const { error: upErr } = await supabase.storage
+          .from("project-images")
+          .upload(newPath, data.newFile, { cacheControl: "3600", upsert: false });
         if (upErr) throw upErr;
         const { data: pub } = supabase.storage.from("project-images").getPublicUrl(newPath);
         cover_url = pub.publicUrl;
-        // remember new path; remove old later (best-effort)
         const oldPath = cover_path;
         cover_path = newPath;
 
-        // 2) Update row first (so you don't lose the project if remove fails)
         const { error: updErr } = await supabase
           .from("projects")
           .update({
@@ -556,12 +547,10 @@ export default function AdminProjects() {
           .eq("id", data.id);
         if (updErr) throw updErr;
 
-        // 3) Best-effort remove old file
         if (oldPath) {
           await supabase.storage.from("project-images").remove([oldPath]);
         }
       } else {
-        // No new image: simple update
         const { error: updErr } = await supabase
           .from("projects")
           .update({
@@ -584,11 +573,9 @@ export default function AdminProjects() {
 
   async function deleteProject(p: DBProject) {
     try {
-      // 1) Delete row
       const { error: delErr } = await supabase.from("projects").delete().eq("id", p.id);
       if (delErr) throw delErr;
 
-      // 2) Best-effort delete cover
       if (p.cover_path) {
         await supabase.storage.from("project-images").remove([p.cover_path]);
       }
@@ -599,8 +586,20 @@ export default function AdminProjects() {
     }
   }
 
+  const renderDateLine = (p: DBProject, small = false) => {
+    const start = p.start_date ? format(new Date(p.start_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy") : null;
+    const end = p.end_date ? format(new Date(p.end_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy") : null;
+    const label = start ? (end ? `${start} – ${end}` : start) : "No date";
+    return (
+      <div className={small ? "text-xs text-gray-500 flex items-center gap-2" : "text-sm text-gray-500 flex items-center gap-2"}>
+        <Calendar className="h-4 w-4 text-muted-foreground" />
+        <span>{label}</span>
+      </div>
+    );
+  };
+
   const renderCard = (p: DBProject) => (
-    <div key={p.id} className="bg-white rounded shadow-md overflow-hidden">
+    <div key={p.id} className="bg-white rounded border overflow-hidden hover:shadow-sm transition">
       <img
         src={p.cover_url || "https://via.placeholder.com/400x200"}
         alt={p.title}
@@ -608,24 +607,19 @@ export default function AdminProjects() {
       />
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-lg font-semibold">{p.title}</h3>
-          <Badge variant={p.status === "published" ? "default" : "secondary"}>
-            {p.status}
-          </Badge>
+          <h3 className="text-lg font-semibold truncate">{p.title}</h3>
+          <Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status}</Badge>
         </div>
 
-        {p.summary && <p className="text-sm text-gray-600">{p.summary}</p>}
+        {p.summary && <p className="text-sm text-gray-600 line-clamp-2">{p.summary}</p>}
 
-        <p className="text-sm text-gray-500">
-          {p.start_date ? `📅 ${format(new Date(p.start_date), "MMMM dd, yyyy")}` : "No date"}
-          {p.end_date ? ` – ${format(new Date(p.end_date), "MMMM dd, yyyy")}` : ""}
-        </p>
+        {renderDateLine(p, false)}
 
         <div className="flex gap-2 pt-2">
-          <Button size="sm" variant="secondary" onClick={() => { setToEdit(p); setEditOpen(true); }}>
+          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToEdit(p); setEditOpen(true); }}>
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => { setToDelete(p); setDeleteOpen(true); }}>
+          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToDelete(p); setDeleteOpen(true); }}>
             <Trash2 className="w-4 h-4 mr-1" /> Delete
           </Button>
         </div>
@@ -633,43 +627,92 @@ export default function AdminProjects() {
     </div>
   );
 
+  const renderCardCarousel = (p: DBProject) => (
+    <div key={p.id} className="w-64 sm:w-72 flex-shrink-0 bg-white rounded border overflow-hidden hover:shadow-sm transition">
+      <img
+        src={p.cover_url || "https://via.placeholder.com/400x200"}
+        alt={p.title}
+        className="w-full h-36 object-cover"
+      />
+      <div className="p-4 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-base font-semibold truncate">{p.title}</h3>
+          <Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status}</Badge>
+        </div>
+
+        {p.summary && <p className="text-sm text-gray-600 line-clamp-2">{p.summary}</p>}
+
+        {renderDateLine(p, true)}
+
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToEdit(p); setEditOpen(true); }}>
+            <Pencil className="w-4 h-4 mr-1" /> Edit
+          </Button>
+          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToDelete(p); setDeleteOpen(true); }}>
+            <Trash2 className="w-4 h-4 mr-1" /> Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const upcomingRef = useRef<HTMLDivElement | null>(null);
+  const scrollBy = (dx: number) => {
+    if (upcomingRef.current) {
+      upcomingRef.current.scrollBy({ left: dx, behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-10">
+      <style>{`
+        .no-scrollbar { scrollbar-width: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Manage Projects</h1>
+        <div className="mb-2">
+          <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-sm text-muted-foreground">
             Create, update, publish, archive, or delete. Published + Public appear in Connect & Public site.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            Reload
-          </Button>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Project
-          </Button>
-        </div>
       </div>
 
-      {/* Upcoming */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Upcoming Projects</h2>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            New Project
-          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>New Project</Button>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {upcoming.length ? upcoming.map(renderCard) : (
-            <p className="text-gray-500">No upcoming projects yet.</p>
+
+        <div className="relative border rounded-lg bg-white">
+          <div ref={upcomingRef} className="flex gap-4 overflow-x-auto no-scrollbar p-4">
+            {upcoming.length ? upcoming.map(renderCardCarousel) : (
+              <p className="text-gray-500">No upcoming projects yet.</p>
+            )}
+          </div>
+
+          {upcoming.length > 4 && (
+            <>
+              <button
+                aria-label="Scroll left"
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white p-2 rounded-full shadow border"
+                onClick={() => scrollBy(-320)}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                aria-label="Scroll right"
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white p-2 rounded-full shadow border"
+                onClick={() => scrollBy(320)}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </>
           )}
         </div>
       </section>
 
-      {/* Past */}
       <section>
         <h2 className="text-2xl font-semibold mb-4">Past Projects</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -679,14 +722,12 @@ export default function AdminProjects() {
         </div>
       </section>
 
-      {/* Create */}
       <CreateProjectModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSave={createProject}
       />
 
-      {/* Edit */}
       {toEdit && (
         <EditProjectModal
           open={editOpen}
@@ -696,7 +737,6 @@ export default function AdminProjects() {
         />
       )}
 
-      {/* Delete */}
       {toDelete && (
         <ConfirmDeleteDialog
           open={deleteOpen}

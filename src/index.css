@@ -14,15 +14,28 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Remove focus outlines site-wide + iOS tap flash */
+@layer base {
+  :where(button,[type='button'],[type='submit'],[role='button'],a,input,select,textarea) {
+    @apply outline-none focus:outline-none focus:ring-0 ring-0;
+  }
+  :where(button,[type='button'],[type='submit'],[role='button'],a,input,select,textarea):focus {
+    outline: none;
+    box-shadow: none;
+  }
+  :where(button,[type='button'],[type='submit'],[role='button'],a,input,select,textarea):focus-visible {
+    outline: none;
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+}
+
 /* Links */
 a {
   font-weight: 500;
   color: #646cff;
   text-decoration: inherit;
 }
-a:hover {
-  color: #535bf2;
-}
+a:hover { color: #535bf2; }
 
 /* Headings */
 h1 {
@@ -42,14 +55,8 @@ button {
   cursor: pointer;
   transition: border-color 0.25s, background-color 0.25s;
 }
-
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
+button:hover { border-color: #646cff; }
+/* removed the old button:focus / :focus-visible outline */
 
 /* Move report details modal to center-left */
 .report-details-modal[data-radix-dialog-content] {
@@ -58,3 +65,5 @@ button:focus-visible {
   left: 30% !important;
   transform: translateY(-50%) !important; /* only vertical centering */
 }
+
+.leaflet-marker-shadow { display: none !important; }

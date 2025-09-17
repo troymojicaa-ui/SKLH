@@ -48,8 +48,9 @@ const Index = () => {
                 >
                   Login
                 </Button>
-                <Link to="/projects">
-                  <Button variant="outline">Explore Projects</Button>
+                {/* UPDATED: Explore Events -> routes to /events */}
+                <Link to="/events">
+                  <Button variant="outline">Explore Events</Button>
                 </Link>
               </div>
             </div>
@@ -160,10 +161,8 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Footer */}
       <Footer />
 
-      {/* Login Modal */}
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
@@ -212,7 +211,6 @@ function UpcomingSection({
 
   return (
     <section className="relative overflow-hidden bg-white py-20">
-      {/* soft blue curved background */}
       <div className="absolute inset-0 -z-10">
         <div
           className="absolute -top-32 right-0 h-[420px] w-[720px] bg-gradient-to-b from-sky-50 to-sky-200 opacity-90"
@@ -225,7 +223,6 @@ function UpcomingSection({
       </div>
 
       <div className="mx-auto max-w-6xl px-6 grid md:grid-cols-2 gap-12 items-center">
-        {/* Text */}
         <div className={`${textFirst ? "order-1" : "order-2"} max-w-xl`}>
           <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
             {kicker}
@@ -241,7 +238,6 @@ function UpcomingSection({
           </Button>
         </div>
 
-        {/* Visuals */}
         <div className={`${textFirst ? "order-2" : "order-1"} relative`}>
           <div className="relative mx-auto h-64 w-64 rounded-xl bg-gray-200 shadow" />
           <div className="absolute -right-4 -top-6 h-24 w-24 rounded-lg bg-gray-200 shadow" />
