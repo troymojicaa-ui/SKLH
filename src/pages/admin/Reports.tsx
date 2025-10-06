@@ -105,14 +105,20 @@ function StatusBadge({ status }: { status: ReportStatus }) {
   return <span className={`px-2 py-0.5 rounded text-[11px] ${style}`}>{STATUS_UI_LABEL[status]}</span>;
 }
 
-function StatusSelect({ value, onChange }: { value: ReportStatus; onChange: (v: ReportStatus) => void }) {
+/** Status editor for a single report (no "all" option here) */
+function StatusSelect({
+  value,
+  onChange,
+}: {
+  value: ReportStatus;
+  onChange: (v: ReportStatus) => void;
+}) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as ReportStatus)}>
       <SelectTrigger className="w-[180px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent className="bg-white border shadow-md">
-        <SelectItem value="all">All statuses</SelectItem>
         <SelectItem value="pending">Pending</SelectItem>
         <SelectItem value="reviewed">In Progress</SelectItem>
         <SelectItem value="resolved">Resolved</SelectItem>
@@ -165,7 +171,9 @@ function SideModal({
     <>
       {open && <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-full sm:w-[520px] bg-white shadow-2xl transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-50 w-full sm:w-[520px] bg-white shadow-2xl transition-transform duration-300 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
         role="dialog"
         aria-modal="true"
       >
@@ -182,10 +190,11 @@ function SideModal({
         <div className="p-6 space-y-6 overflow-y-auto h-[calc(100%-57px)]">
           <div className="grid grid-cols-[20px,1fr] items-start gap-x-3 gap-y-2">
             <CalendarClock className="h-4 w-4 text-muted-foreground mt-0.5" />
-            <div className="text-sm text-muted-foreground">{report ? format(new Date(report.created_at), "PPp") : ""}</div>
+            <div className="text-sm text-muted-foreground">
+              {report ? format(new Date(report.created_at), "PPp") : ""}
+            </div>
             <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
             <div className="text-sm text-muted-foreground break-words">
-              {/* address shown via injected prop below (computed in parent), fallback to coords */}
               {(report as any)?.__displayAddress ??
                 (report?.lat != null && report?.lng != null
                   ? `${report.lat.toFixed(6)}, ${report.lng.toFixed(6)}`
@@ -195,7 +204,9 @@ function SideModal({
 
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Details</h4>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report?.description || "—"}</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {report?.description || "—"}
+            </p>
           </div>
 
           {images.length > 0 && (
@@ -241,7 +252,9 @@ export default function AdminReports() {
     try {
       const { data, error } = await supabase
         .from("reports")
-        .select("id,user_id,title,description,created_at,status,edited,lat,lng,photo_url,address")
+        .select(
+          "id,user_id,title,description,created_at,status,edited,lat,lng,photo_url,address"
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       setReports((data ?? []) as Report[]);
@@ -270,7 +283,11 @@ export default function AdminReports() {
   useEffect(() => {
     let cancelled = false;
     const targets = reports.filter(
-      (r) => !r.address && typeof r.lat === "number" && typeof r.lng === "number" && !addrCache[r.id]
+      (r) =>
+        !r.address &&
+        typeof r.lat === "number" &&
+        typeof r.lng === "number" &&
+        !addrCache[r.id]
     );
     if (targets.length === 0) return;
 
@@ -299,13 +316,22 @@ export default function AdminReports() {
 
   // Compute display address from saved address or cache; fall back to precise coords
   const getDisplayAddress = (r: Report) =>
-    r.address || addrCache[r.id] || (r.lat != null && r.lng != null ? `${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}` : "Location unavailable");
+    r.address ||
+    addrCache[r.id] ||
+    (r.lat != null && r.lng != null
+      ? `${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}`
+      : "Location unavailable");
 
   async function updateStatus(id: string, next: ReportStatus) {
     const prev = reports;
     setReports((list) => list.map((r) => (r.id === id ? { ...r, status: next } : r)));
     try {
-      const { error } = await supabase.from("reports").update({ status: next }).eq("id", id).select("id").single();
+      const { error } = await supabase
+        .from("reports")
+        .update({ status: next })
+        .eq("id", id)
+        .select("id")
+        .single();
       if (error) throw error;
     } catch (e: any) {
       setReports(prev);
@@ -383,7 +409,10 @@ export default function AdminReports() {
               </p>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Filter by status:</span>
-                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ReportStatus | "all")}>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(v) => setStatusFilter(v as ReportStatus | "all")}
+                >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
@@ -423,7 +452,11 @@ export default function AdminReports() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h3 className="font-medium truncate">{r.title}</h3>
-                        <p className={`text-xs text-muted-foreground mt-1 ${expandedCards ? "" : "line-clamp-2"}`}>
+                        <p
+                          className={`text-xs text-muted-foreground mt-1 ${
+                            expandedCards ? "" : "line-clamp-2"
+                          }`}
+                        >
                           {r.description || "—"}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -474,15 +507,14 @@ export default function AdminReports() {
             </div>
           </div>
 
-          {/* RIGHT: map fills the rest, no page scrolling */}
-          <div className="lg:col-span-3 h-full rounded-lg overflow-hidden border bg-white">
+          {/* RIGHT: map fills the rest, sits UNDER UI (z-0) */}
+          <div className="lg:col-span-3 h-full rounded-lg overflow-hidden border bg-white relative z-0">
             <MapContainer
               center={LOYOLA_CENTER}
               zoom={DEFAULT_ZOOM}
-              style={{ height: "100%", width: "100%" }}
               whenCreated={(m) => (mapRef.current = m)}
               scrollWheelZoom
-              className="z-0"
+              className="h-full w-full z-0"
             >
               <TileLayer
                 attribution="&copy; OpenStreetMap &copy; CARTO"
@@ -501,7 +533,6 @@ export default function AdminReports() {
                 .map((r) => {
                   const active = r.id === (hoverId ?? selectedId);
                   const icon = iconFor(r, active);
-                  // Marker uses EXACT stored lat/lng (no rounding) for precision
                   return (
                     <Marker
                       key={r.id}
@@ -521,12 +552,15 @@ export default function AdminReports() {
             </MapContainer>
           </div>
 
-          {/* inject computed display address into modal without altering DB */}
+          {/* Inject computed display address into modal without altering DB */}
           <SideModal
             open={modalOpen}
             report={
               selectedReport
-                ? ({ ...selectedReport, __displayAddress: getDisplayAddress(selectedReport) } as any)
+                ? ({
+                    ...selectedReport,
+                    __displayAddress: getDisplayAddress(selectedReport),
+                  } as any)
                 : null
             }
             onClose={() => setModalOpen(false)}

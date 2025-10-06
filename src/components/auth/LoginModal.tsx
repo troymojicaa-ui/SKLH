@@ -1,29 +1,47 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserCircle, Shield } from "lucide-react"; // icons hidden on desktop
+import { UserCircle, Shield } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/context/AuthProvider";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  role: "admin" | "user"; // "user" is your Connect side
+  role: "admin" | "user"; // which portal this modal is for
 }
 
 const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
+  const navigate = useNavigate();
+  const { session, role: profileRole } = useAuth(); // live auth state
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [isLoading, setIsLoading] = useState(false);        // password sign-in
+  const [isLoading, setIsLoading] = useState(false);         // password sign-in
   const [isSendingLink, setIsSendingLink] = useState(false); // magic link
   const [msg, setMsg] = useState<string | null>(null);
 
+  // If already logged in, close modal & send to the right home.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (session) {
+      // Prefer profile role when known
+      const dest = (profileRole === "admin" || role === "admin")
+        ? "/admin/app"
+        : "/dashboard";
+      onClose?.();
+      navigate(dest, { replace: true });
+    }
+  }, [session, profileRole, role, isOpen, navigate, onClose]);
+
   const redirectAfterAuth = () => {
-    // Final redirect when using password login
-    const dest = role === "admin" ? "/admin/app" : "/connect/app";
-    window.location.href = dest;
+    const dest = role === "admin" ? "/admin/app" : "/dashboard";
+    onClose?.();
+    navigate(dest, { replace: true });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -35,27 +53,26 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
       return;
     }
 
-    // If password is blank -> send magic link (passwordless)
+    // Passwordless: send magic link if password is blank
     if (!password.trim()) {
       setIsSendingLink(true);
       try {
-        // tell the callback where to go
-        const dest = role === "admin" ? "admin" : "connect";
-        const redirect = `${window.location.origin}/auth/callback?dest=${dest}`;
+        const destParam = role === "admin" ? "admin" : "connect";
+        const redirect = `${window.location.origin}/auth/callback?dest=${destParam}`;
 
-        // also keep a local fallback in case the query param is lost
-        localStorage.setItem("post_login_dest", dest);
+        // fallback in case query param is lost
+        localStorage.setItem("post_login_dest", destParam);
 
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            shouldCreateUser: false, // require existing account; set true to auto-create
-            emailRedirectTo: redirect, // MUST be allowed in Supabase Auth → URL Configuration
+            shouldCreateUser: false, // set to true if you want auto-create
+            emailRedirectTo: redirect, // must be allowed in Supabase auth settings
           },
         });
         if (error) throw error;
 
-        setMsg("Magic link sent. Please check your email to complete sign-in.");
+        setMsg("Magic link sent. Check your email to complete sign-in.");
       } catch (err: any) {
         setMsg(err?.message ?? "Failed to send magic link. Please try again.");
       } finally {
@@ -64,14 +81,13 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
       return;
     }
 
-    // Otherwise, do normal password login
+    // Password login
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (data.session) {
-        redirectAfterAuth();
-        onClose();
+        redirectAfterAuth(); // will close modal & navigate
       } else {
         setMsg("Login failed. Please try again.");
       }
