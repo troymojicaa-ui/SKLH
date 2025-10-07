@@ -50,6 +50,12 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
             >
               Events
             </Link>
+            <Link
+              to="/dashboard"
+              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+            >
+              Dashboard
+            </Link>
 
             {/* CTA — opens Connect login modal */}
             <Button
@@ -97,6 +103,13 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
                 className="text-sm font-medium text-white/90 hover:text-white transition-colors"
               >
                 Events
+              </Link>
+              <Link
+                to="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+              >
+                Dashboard
               </Link>
 
               {/* Mobile CTA — also opens Connect login modal */}
