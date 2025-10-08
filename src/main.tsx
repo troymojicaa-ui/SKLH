@@ -1,8 +1,9 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { registerSW } from 'virtual:pwa-register'
 
-import "leaflet/dist/leaflet.css";
+import 'leaflet/dist/leaflet.css';
 import "./lib/leaflet-icon-fix";
 console.log("[main] after icon fix import");
 
@@ -19,7 +20,18 @@ import App from "./App";
 // IMPORTANT: use the named export from the Provider we added (with inactivity auto-logout)
 import { AuthProvider } from "@/context/AuthProvider";
 
-createRoot(document.getElementById("root")!).render(
+const updateSW = registerSW({
+  onNeedRefresh() {
+    if (confirm('New content available. Reload?')) {
+      updateSW(true)
+    }
+  },
+  onOfflineReady() {
+    console.log('App ready to work offline')
+  },
+})
+
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>

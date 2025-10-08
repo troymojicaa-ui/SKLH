@@ -83,6 +83,12 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
             >
               Events
             </Link>
+            <Link
+              to="/dashboard"
+              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+            >
+              Dashboard
+            </Link>
 
             {loading ? (
               <span className="text-sm text-white/70">Checking session…</span>
@@ -181,6 +187,13 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
                 className="text-sm font-medium text-white/90 hover:text-white transition-colors"
               >
                 Events
+              </Link>
+              <Link
+                to="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+              >
+                Dashboard
               </Link>
 
               {loading ? (
