@@ -1,6 +1,6 @@
 // src/components/layout/AdminLayout.tsx
-import { useState } from "react";
-import { Outlet, NavLink } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -14,14 +14,43 @@ import {
   Calendar,
   Building2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/context/AuthProvider";
 
 const ADMIN_BLUE = "#173A67";
 
 const AdminLayout = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { signOut, loading, session } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // RELATIVE paths because this layout is mounted at /admin/app
+  // 🔒 Avoid redirect loop on logout
+  const loggingOutRef = useRef(false);
+
+  // Guard: wait for loading; if no session and we're not in the middle of logout,
+  // send to /admin (which shows modal)
+  useEffect(() => {
+    if (loading || loggingOutRef.current) return;
+    if (!session) {
+      navigate(`/admin?next=${encodeURIComponent(location.pathname)}`, { replace: true });
+    }
+  }, [loading, session, navigate, location.pathname]);
+
+  // Redirect to homepage after logout (and suppress guard during the transition)
+  const handleLogout = async () => {
+    try {
+      loggingOutRef.current = true;
+      setMenuOpen(false);
+      await signOut();
+      navigate("/", { replace: true });
+    } finally {
+      // small delay to ensure route change settles before re-enabling guard
+      setTimeout(() => {
+        loggingOutRef.current = false;
+      }, 0);
+    }
+  };
+
   const navigation = [
     { name: "Dashboard", href: ".", icon: Home, end: true },
     { name: "Reports", href: "reports", icon: BarChart3 },
@@ -31,14 +60,6 @@ const AdminLayout = () => {
     { name: "Facilities", href: "facilities", icon: Building2 },
     { name: "About Us", href: "about", icon: Info },
   ];
-
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } finally {
-      window.location.href = "/";
-    }
-  };
 
   const NavItem = ({
     to,
@@ -65,15 +86,38 @@ const AdminLayout = () => {
     </NavLink>
   );
 
+  // While auth is resolving and before we know if there's a session, show a tiny bar
+  if (loading) {
+    return (
+      <div className="min-h-dvh bg-gray-50">
+        <header
+          className="sticky top-0 z-50 w-full border-b border-black/10"
+          style={{ backgroundColor: ADMIN_BLUE }}
+        >
+          <div className="h-12 w-full px-3 md:px-5 flex items-center">
+            <div className="text-white text-sm">Checking session…</div>
+          </div>
+        </header>
+        <main className="px-4 py-4 md:px-6">
+          <div className="text-sm text-gray-600">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border border-gray-300 border-t-transparent mr-2" />
+            Loading…
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // If no session, the effect above will navigate; render nothing briefly.
+  if (!session) return null;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* TOP HEADER */}
+    <div className="min-h-dvh bg-gray-50">
       <header
         className="sticky top-0 z-50 w-full border-b border-black/10"
         style={{ backgroundColor: ADMIN_BLUE }}
       >
         <div className="h-12 w-full px-3 md:px-5 flex items-center">
-          {/* Mobile menu */}
           <div className="md:hidden mr-2">
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
               <SheetTrigger asChild>
@@ -126,7 +170,6 @@ const AdminLayout = () => {
             </Sheet>
           </div>
 
-          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
             {navigation.map((item) => (
               <NavItem key={item.name} to={item.href} end={Boolean((item as any).end)}>
@@ -135,7 +178,6 @@ const AdminLayout = () => {
             ))}
           </nav>
 
-          {/* Right side */}
           <div className="ml-auto flex items-center gap-4">
             <button
               onClick={handleLogout}
@@ -151,7 +193,6 @@ const AdminLayout = () => {
         </div>
       </header>
 
-      {/* PAGE CONTENT */}
       <main className="px-4 py-4 md:px-6">
         <Outlet />
       </main>
