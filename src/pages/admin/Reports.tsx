@@ -23,6 +23,9 @@ import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L, { LatLngExpression, Map as LeafletMap } from "leaflet";
 import { format } from "date-fns";
 import { CheckCircle2, Check, MapPin, X, CalendarClock } from "lucide-react";
+import MapView from "./components/Mapview";
+import MarkerPins from "./components/MarkerPins";
+import FitBounds from "./components/FitBounds";
 
 type ReportStatus = "pending" | "reviewed" | "resolved";
 
@@ -509,47 +512,18 @@ export default function AdminReports() {
 
           {/* RIGHT: map fills the rest, sits UNDER UI (z-0) */}
           <div className="lg:col-span-3 h-full rounded-lg overflow-hidden border bg-white relative z-0">
-            <MapContainer
-              center={LOYOLA_CENTER}
-              zoom={DEFAULT_ZOOM}
-              whenCreated={(m) => (mapRef.current = m)}
-              scrollWheelZoom
-              className="h-full w-full z-0"
-            >
-              <TileLayer
-                attribution="&copy; OpenStreetMap &copy; CARTO"
-                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                errorTileUrl="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+            <MapView center={LOYOLA_CENTER} zoom={DEFAULT_ZOOM}>
+              <FitBounds points={filtered.filter(r => r.lat && r.lng).map(r => ({ lat: r.lat, lng: r.lng }))} />
+              <MarkerPins
+                reports={filtered}
+                selectedId={selectedId}
+                hoverId={hoverId}
+                setSelectedId={setSelectedId}
+                setHoverId={setHoverId}
+                setModalOpen={setModalOpen}
+                iconFor={iconFor}
               />
-              <FlyTo
-                center={
-                  selectedReport && selectedReport.lat != null && selectedReport.lng != null
-                    ? [selectedReport.lat, selectedReport.lng]
-                    : null
-                }
-              />
-              {filtered
-                .filter((r) => r.lat != null && r.lng != null)
-                .map((r) => {
-                  const active = r.id === (hoverId ?? selectedId);
-                  const icon = iconFor(r, active);
-                  return (
-                    <Marker
-                      key={r.id}
-                      position={[r.lat as number, r.lng as number]}
-                      icon={icon}
-                      eventHandlers={{
-                        click: () => {
-                          setSelectedId(r.id);
-                          setModalOpen(true);
-                        },
-                        mouseover: () => setHoverId(r.id),
-                        mouseout: () => setHoverId(null),
-                      }}
-                    />
-                  );
-                })}
-            </MapContainer>
+            </MapView>
           </div>
 
           {/* Inject computed display address into modal without altering DB */}
