@@ -33,13 +33,14 @@ import ReportCreate from "./pages/user/ReportCreate";
 import ReportSuccess from "./pages/user/ReportSuccess";
 import ReportDetail from "./pages/user/ReportDetail";
 import Events from "./pages/user/Events";
-import Facilities from "./pages/user/Facilities";
+import Facilities from "./pages/user/facilities/Facilities";
 
 import ResetPassword from "./pages/auth/ResetPassword";
 
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthProvider";
+import FacilityDetail from "./pages/user/facilities/FacilityDetail";
 
 const queryClient = new QueryClient();
 
@@ -209,6 +210,7 @@ export default function App() {
           <Route path="report/:id" element={<ReportDetail />} />
           <Route path="profile" element={<UserProfile />} />
           <Route path="facilities" element={<Facilities />} />
+          <Route path="facilities/:id" element={<FacilityDetail />} />
         </Route>
 
         <Route path="*" element={<Index />} />
