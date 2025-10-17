@@ -1,15 +1,17 @@
-// src/pages/user/Facilities.tsx
+// src/pages/user/facilities/Facilities.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { MapPin, Clock, ChevronLeft, ChevronRight, X, Building2 } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
 
-type Facility = {
+export type Facility = {
   id: string;
   name: string;
   description: string | null;
   facility_photos?: { url: string | null; sort_order: number | null }[];
   facility_hours?: { dow: number; open_time: string | null; close_time: string | null }[];
+  facility_address: {street: string | null, barangay: string | null, city: string | null, lat: number | null, lng: number | null}
 };
 
 type HoursDay = { open?: string | null; close?: string | null; closed?: boolean | null };
@@ -42,129 +44,20 @@ function photosFrom(f?: Facility): string[] {
   return Array.from(new Set(arr));
 }
 
-/* ---------- Carousel ---------- */
-function PhotoCarousel({ images, className = "" }: { images: string[]; className?: string }) {
-  const [idx, setIdx] = useState(0);
-  const wrap = (n: number) => (images.length ? (n + images.length) % images.length : 0);
-  const go = (delta: number) => setIdx((i) => wrap(i + delta));
+function getAddressText(facility_address: {street: string | null, barangay: string | null, city: string | null} | null): string {
+	if (facility_address === null) return '-'
 
-  const startX = useRef<number | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => (startX.current = e.touches[0].clientX);
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (startX.current == null) return;
-    const dx = e.changedTouches[0].clientX - startX.current;
-    if (Math.abs(dx) > 40) go(dx < 0 ? +1 : -1);
-    startX.current = null;
-  };
-
-  if (images.length === 0) {
-    return (
-      <div className={`grid place-items-center bg-slate-100 text-slate-500 rounded-lg ${className}`}>
-        No photos
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`relative overflow-hidden rounded-lg bg-black/5 ${className}`}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-    >
-      <img src={images[idx]} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
-      {images.length > 1 && (
-        <>
-          <button
-            aria-label="Previous photo"
-            onClick={() => go(-1)}
-            className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white p-2 shadow"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            aria-label="Next photo"
-            onClick={() => go(1)}
-            className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 hover:bg-white p-2 shadow"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
-            {images.map((_, i) => (
-              <span key={i} className={`h-1.5 w-1.5 rounded-full ${i === idx ? "bg-white" : "bg-white/60"}`} />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+	return `${facility_address.street}, ${facility_address.barangay}, ${facility_address.city}`
 }
 
-/* ---------- Fullscreen View ---------- */
-function FacilityFullView({ facility, onClose }: { facility: Facility; onClose: () => void }) {
-  const images = useMemo(() => photosFrom(facility), [facility]);
-  const hours = useMemo(() => buildHoursFromRows(facility?.facility_hours), [facility]);
-
-  return (
-    <div className="fixed inset-0 z-50 bg-white">
-      <button
-        aria-label="Close"
-        onClick={onClose}
-        className="absolute right-3 top-3 rounded-full bg-white shadow p-2 hover:bg-slate-50"
-      >
-        <X className="h-5 w-5" />
-      </button>
-
-      <div className="mx-auto max-w-4xl px-4 sm:px-6 pt-14 pb-4 overflow-y-auto h-full">
-        <h2 className="text-xl sm:text-2xl font-semibold">{facility.name}</h2>
-        {facility.description ? <p className="mt-1 text-slate-600">{facility.description}</p> : null}
-
-        <PhotoCarousel images={images} className="mt-4 h-64 sm:h-80" />
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border p-3">
-            <div className="flex items-center gap-2 font-medium">
-              <MapPin className="h-4 w-4 text-slate-600" />
-              Location
-            </div>
-            <p className="mt-1 text-sm text-slate-700 break-words">—</p>
-          </div>
-
-          <div className="rounded-lg border p-3">
-            <div className="flex items-center gap-2 font-medium">
-              <Clock className="h-4 w-4 text-slate-600" />
-              Weekly Hours
-            </div>
-
-            {hasAnyHours(hours) ? (
-              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-2 text-sm">
-                {DAY_LABELS.map((lbl, i) => {
-                  const key = DAY_KEYS[i];
-                  const d = hours?.[key];
-                  const val = !d || d.closed || (!d.open && !d.close) ? "Closed" : `${d.open} – ${d.close}`;
-                  return (
-                    <div key={lbl} className="flex items-center justify-between px-1">
-                      <span className="text-slate-600">{lbl}</span>
-                      <span className={val === "Closed" ? "text-rose-600" : "text-slate-800"}>{val}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 mt-1">Hours not set</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ---------- Page ---------- */
 export default function Facilities() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [active, setActive] = useState<Facility | null>(null);
+
+  const navigate = useNavigate()
 
   async function load() {
     setLoading(true);
@@ -176,7 +69,8 @@ export default function Facilities() {
           `
           id, name, description,
           facility_photos:facility_photos(url, sort_order),
-          facility_hours:facility_hours(dow, open_time, close_time)
+          facility_hours:facility_hours(dow, open_time, close_time),
+					facility_address:facility_addresses(street, barangay, city, lat, lng)
         `
         )
         .order("name", { ascending: true });
@@ -215,7 +109,11 @@ export default function Facilities() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">
-      <h1 className="text-2xl font-semibold mb-4">Facilities</h1>
+      <NavLink to={"/dashboard"} className="flex items-center py-2" >
+        <ChevronLeft className="pl-0 h-6 w-6" /> Back to Home
+      </NavLink>
+
+      <h1 className="text-2xl font-semibold mb-4 flex justify-center">Facilities</h1>
 
       {loading ? (
         <Card className="p-4 text-sm text-slate-600">Loading…</Card>
@@ -235,7 +133,8 @@ export default function Facilities() {
               <Card
                 key={f.id}
                 className="overflow-hidden hover:shadow transition cursor-pointer"
-                onClick={() => setActive(f)}
+                // onClick={() => setActive(f)}
+                onClick={()=> navigate(`/dashboard/facilities/${f.id}`)}
               >
                 <div className="relative h-40 bg-slate-100 overflow-hidden">
                   {cover ? (
@@ -261,7 +160,7 @@ export default function Facilities() {
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex items-center gap-2 text-slate-600">
                       <MapPin className="h-4 w-4" />
-                      <span className="truncate">—</span>
+                      <span className="truncate">{getAddressText(f.facility_address)}</span>
                     </div>
                     <div className={`flex items-center gap-2 ${hoursSet ? "text-slate-600" : "text-rose-600"}`}>
                       <Clock className="h-4 w-4" />
@@ -274,8 +173,6 @@ export default function Facilities() {
           })}
         </div>
       )}
-
-      {active && <FacilityFullView facility={active} onClose={() => setActive(null)} />}
     </div>
   );
 }
