@@ -22,7 +22,7 @@ import Projects from "./pages/admin/Projects";
 import EditAboutUs from "./pages/admin/EditAboutUs";
 import CalendarPage from "./pages/admin/Calendar";
 import Reports from "./pages/admin/Reports";
-import AdminFacilities from "@/pages/admin/Facilities";
+import AdminFacilities from "@/pages/admin/facilities/Facilities";
 import AdminGate from "./pages/admin/AdminGate";
 
 import UserDashboard from "./pages/user/UserDashboard";

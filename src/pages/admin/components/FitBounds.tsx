@@ -16,7 +16,7 @@ const FitBounds = ({ points, padding = [30, 30] }: FitBoundsProps) => {
 
     const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
     map.fitBounds(bounds, { padding });
-  }, []);
+  }, [points]);
 
   return null; // this component renders nothing
 };

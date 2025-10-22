@@ -11,7 +11,7 @@ export type Facility = {
   description: string | null;
   facility_photos?: { url: string | null; sort_order: number | null }[];
   facility_hours?: { dow: number; open_time: string | null; close_time: string | null }[];
-  facility_address: {street: string | null, barangay: string | null, city: string | null, lat: number | null, lng: number | null}
+  facility_address: {address: string, lat: number, lng: number}
 };
 
 type HoursDay = { open?: string | null; close?: string | null; closed?: boolean | null };
@@ -44,11 +44,6 @@ function photosFrom(f?: Facility): string[] {
   return Array.from(new Set(arr));
 }
 
-function getAddressText(facility_address: {street: string | null, barangay: string | null, city: string | null} | null): string {
-	if (facility_address === null) return '-'
-
-	return `${facility_address.street}, ${facility_address.barangay}, ${facility_address.city}`
-}
 
 
 /* ---------- Page ---------- */
@@ -70,7 +65,7 @@ export default function Facilities() {
           id, name, description,
           facility_photos:facility_photos(url, sort_order),
           facility_hours:facility_hours(dow, open_time, close_time),
-					facility_address:facility_addresses(street, barangay, city, lat, lng)
+					facility_address:facility_addresses(address, lat, lng)
         `
         )
         .order("name", { ascending: true });
@@ -160,7 +155,7 @@ export default function Facilities() {
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex items-center gap-2 text-slate-600">
                       <MapPin className="h-4 w-4" />
-                      <span className="truncate">{getAddressText(f.facility_address)}</span>
+                      <span className="truncate">{f.facility_address.address}</span>
                     </div>
                     <div className={`flex items-center gap-2 ${hoursSet ? "text-slate-600" : "text-rose-600"}`}>
                       <Clock className="h-4 w-4" />
