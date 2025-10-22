@@ -96,12 +96,6 @@ function PhotoCarousel({ images, className = "" }: { images: string[]; className
   );
 }
 
-function getAddressText(facility_address: {street: string | null, barangay: string | null, city: string | null} | null) {
-	if (facility_address === null) return '-'
-
-	return `${facility_address.street}, ${facility_address.barangay}, ${facility_address.city}`
-}
-
 function DetailView({ facility }: { facility: Facility; }) {
   const images = useMemo(() => photosFrom(facility), [facility]);
   const hours = useMemo(() => buildHoursFromRows(facility?.facility_hours), [facility]);
@@ -125,7 +119,7 @@ function DetailView({ facility }: { facility: Facility; }) {
               <MapPin className="h-4 w-4 text-slate-600" />
               Location
             </div>
-            <p className="mt-1 text-sm text-slate-700 break-words">{getAddressText(facility.facility_address)}</p>
+            <p className="mt-1 text-sm text-slate-700 break-words">{facility.facility_address.address}</p>
 						{ markerLocation && (
 							<div className="h-64 w-full">
 								<MapView center={markerLocation} zoom={DEFAULT_ZOOM}>
@@ -182,7 +176,7 @@ export default function FacilityDetail() {
 					id, name, description,
 					facility_photos:facility_photos(url, sort_order),
 					facility_hours:facility_hours(dow, open_time, close_time),
-					facility_address:facility_addresses(street, barangay, city, lat, lng)
+					facility_address:facility_addresses(address, lat, lng)
 				`
 				)
 				.eq("id", facilityId) 
