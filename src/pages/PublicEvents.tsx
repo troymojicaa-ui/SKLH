@@ -1,3 +1,4 @@
+// src/pages/PublicEvents.tsx
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useEffect, useMemo, useState } from "react";
@@ -11,7 +12,9 @@ import {
   MapPin,
   X,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import LoginModal from "@/components/auth/LoginModal";
+import { useAuth } from "@/context/AuthProvider";
 
 type Project = {
   id: string;
@@ -28,6 +31,9 @@ type Project = {
   mode?: string | null;
   speakers?: string[] | null;
 };
+
+type RegistrationStatus = "pending" | "approved" | "denied";
+type RegistrationMap = Record<string, { id: string; status: RegistrationStatus } | undefined>;
 
 function safeDate(s?: string | null) {
   if (!s) return null;
@@ -48,12 +54,38 @@ function formatDateRange(start?: string | null, end?: string | null) {
   return sameDay ? left : `${left} – ${format(ed, "EEE dd MMM yyyy")}`;
 }
 
+function isPastEvent(p: Project) {
+  const now = new Date();
+  const start = safeDate(p.start_date);
+  const end = safeDate(p.end_date || p.start_date);
+  if (!start) return true;
+  const lastDay = end ?? start;
+  const cutoff = new Date(
+    lastDay.getFullYear(),
+    lastDay.getMonth(),
+    lastDay.getDate(),
+    23, 59, 59, 999
+  );
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return cutoff < today;
+}
+
 export default function PublicEvents() {
+  const { session } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [featIdx, setFeatIdx] = useState(0);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Project | null>(null);
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [regs, setRegs] = useState<RegistrationMap>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -61,15 +93,50 @@ export default function PublicEvents() {
         .from("projects")
         .select("*")
         .order("start_date", { ascending: true });
-      if (error) console.error(error);
-      else setProjects(data || []);
+      if (!error) setProjects(data || []);
     };
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      setUserId(data?.user?.id ?? null);
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      if (!userId || projects.length === 0) return;
+      const ids = projects.map((p) => p.id);
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select("id,event_id,status")
+        .in("event_id", ids)
+        .eq("user_id", userId);
+      if (error || !data) return;
+      const map: RegistrationMap = {};
+      for (const r of data as any[]) {
+        map[String(r.event_id)] = { id: r.id, status: r.status };
+      }
+      setRegs(map);
+    })();
+  }, [userId, projects]);
+
+  useEffect(() => {
+    if (session && !userId) {
+      setUserId(session.user.id);
+    }
+  }, [session, userId]);
+
+  useEffect(() => {
+    if (searchParams.get("login") === "1") {
+      setLoginOpen(true);
+    }
+  }, [searchParams]);
+
   const today = new Date();
 
-  // Featured = only upcoming events, soonest first, max 3
   const featuredProjects = useMemo(() => {
     return projects
       .filter((p) => {
@@ -90,7 +157,6 @@ export default function PublicEvents() {
     setOpenDay((prev) => (prev === id ? null : id));
   };
 
-  // All Events ordering: upcoming (soonest first) then past (most recent first)
   const allSorted = useMemo(() => {
     const startOfToday = new Date(
       today.getFullYear(),
@@ -134,7 +200,6 @@ export default function PublicEvents() {
     }));
   }, [projects]);
 
-  // Close modal on ESC
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSelectedEvent(null);
@@ -143,11 +208,61 @@ export default function PublicEvents() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedEvent]);
 
+  async function registerWithoutDetails(eventId: string) {
+    if (!userId) return;
+    if (submitting) return;
+    setSubmitting(true);
+    const payload = {
+      event_id: eventId,
+      user_id: userId,
+      status: "pending" as RegistrationStatus,
+    };
+    const { data, error } = await supabase
+      .from("event_registrations")
+      .upsert(payload, { onConflict: "event_id,user_id" })
+      .select("id,status")
+      .single();
+    setSubmitting(false);
+    if (error) {
+      console.error(error);
+      alert(error.message || "Registration failed. Please try again.");
+      return;
+    }
+    setRegs((r) => ({
+      ...r,
+      [eventId]: { id: (data as any).id, status: (data as any).status as RegistrationStatus },
+    }));
+    alert("Registered! You’ll receive an update once reviewed.");
+  }
+
+  function openLoginFlow(eventId?: string) {
+    setLoginOpen(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("login", "1");
+    if (eventId) newParams.set("registerEvent", eventId);
+    setSearchParams(newParams);
+  }
+
+  function goToDashboardEvents(eventId: string) {
+    const q = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "";
+    // ensure absolute path to dashboard
+    window.location.assign(`/dashboard/events${q}`);
+  }
+
+  function handleRegister(eventObj: Project) {
+    const isPast = isPastEvent(eventObj);
+    if (isPast) return;
+    if (!session) {
+      openLoginFlow(eventObj.id);
+      return;
+    }
+    goToDashboardEvents(eventObj.id);
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Header />
 
-      {/* Featured section (upcoming only) */}
       {featured && (
         <section className="max-w-5xl mx-auto px-4 pt-12">
           <h1 className="text-center text-4xl font-semibold">Our Featured Events</h1>
@@ -156,7 +271,6 @@ export default function PublicEvents() {
           </p>
 
           <div className="relative mt-8">
-            {/* arrows – desktop */}
             <button
               className="absolute -left-16 top-1/2 -translate-y-1/2 hidden md:flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-2xl font-bold text-[#173A67] shadow hover:bg-white"
               onClick={() =>
@@ -176,11 +290,8 @@ export default function PublicEvents() {
               &gt;
             </button>
 
-            {/* card with registration form */}
             <div className="grid sm:grid-cols-2 overflow-hidden rounded-xl ring-1 ring-gray-200 shadow-sm">
-              {/* left – details */}
               <div className="bg-white p-6">
-                {/* Removed status pill per request */}
                 <h2 className="mt-1 text-2xl font-semibold">{featured.title}</h2>
 
                 <div className="mt-3 space-y-2 text-sm text-gray-700">
@@ -214,10 +325,14 @@ export default function PublicEvents() {
                       <p className="text-sm text-gray-600">{featured.summary}</p>
                     </div>
                   )}
+                  {regs[featured.id]?.status && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      Status: <span className="font-medium capitalize">{regs[featured.id]!.status}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* right – registration form */}
               <div
                 className="relative min-h-[300px] bg-cover bg-center"
                 style={{
@@ -227,41 +342,32 @@ export default function PublicEvents() {
                 }}
               >
                 <div className="absolute inset-0 p-6 text-white">
-                  <h3 className="text-lg font-medium">
-                    Register for this event and save your spot
-                  </h3>
+                  <h3 className="text-lg font-medium">Register for this event and save your spot</h3>
 
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      alert("Pretend registered ✅ (wire to backend later)");
-                    }}
-                    className="mt-4 space-y-3 max-w-sm"
-                  >
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        placeholder="First name"
-                        className="rounded-md border border-white/30 bg-white/90 px-3 py-2 text-slate-900 placeholder:text-slate-500"
-                        required
-                      />
-                      <input
-                        placeholder="Last name"
-                        className="rounded-md border border-white/30 bg-white/90 px-3 py-2 text-slate-900 placeholder:text-slate-500"
-                        required
-                      />
-                    </div>
-                    <input
-                      placeholder="ID Number"
-                      className="w-full rounded-md border border-white/30 bg-white/90 px-3 py-2 text-slate-900 placeholder:text-slate-500"
-                      required
-                    />
-                    <button
-                      className="mt-2 inline-flex rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
-                      type="submit"
-                    >
-                      Save my spot
-                    </button>
-                  </form>
+                  <div className="mt-4 max-w-sm space-y-2">
+                    {isPastEvent(featured) ? (
+                      <button
+                        className="inline-flex w-full cursor-not-allowed rounded-md bg-gray-500 px-4 py-2 text-sm font-medium text-white opacity-70"
+                        disabled
+                      >
+                        Registration closed
+                      </button>
+                    ) : session ? (
+                      <button
+                        className="inline-flex w-full rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+                        onClick={() => handleRegister(featured)}
+                      >
+                        Register
+                      </button>
+                    ) : (
+                      <button
+                        className="inline-flex w-full rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+                        onClick={() => openLoginFlow(featured.id)}
+                      >
+                        Login to register
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -269,57 +375,88 @@ export default function PublicEvents() {
         </section>
       )}
 
-      {/* All events */}
       <section className="mt-16 bg-sky-900 py-14 text-white">
         <div className="max-w-5xl mx-auto px-4">
           <h2 className="text-center text-3xl font-semibold">All Events</h2>
 
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {listToShow.map((p) => (
-              <article
-                key={p.id}
-                className="rounded-xl bg-sky-800/40 ring-1 ring-white/10 overflow-hidden"
-              >
-                <div className="aspect-[16/9] bg-white/10">
-                  <img
-                    src={
-                      p.cover_url ??
-                      "https://via.placeholder.com/1200x675.png?text=Event+Cover"
-                    }
-                    alt={p.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div className="p-4">
-                  <h3 className="font-medium">{p.title}</h3>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/80">
-                    {formatDateRange(p.start_date, p.end_date) && (
-                      <span>{formatDateRange(p.start_date, p.end_date)}</span>
+          <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {listToShow.map((p) => {
+              const past = isPastEvent(p);
+              return (
+                <article
+                  key={p.id}
+                  className="rounded-xl bg-sky-800/40 ring-1 ring-white/10 overflow-hidden"
+                >
+                  <div className="aspect-[16/9] bg-white/10">
+                    <img
+                      src={
+                        p.cover_url ??
+                        "https://via.placeholder.com/1200x675.png?text=Event+Cover"
+                      }
+                      alt={p.title}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-medium">{p.title}</h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/80">
+                      {formatDateRange(p.start_date, p.end_date) && (
+                        <span>{formatDateRange(p.start_date, p.end_date)}</span>
+                      )}
+                      {past && (
+                        <span className="rounded bg-white/20 px-2 py-0.5 text-[11px]">
+                          past event
+                        </span>
+                      )}
+                    </div>
+                    {p.summary && (
+                      <p className="mt-2 text-sm text-white/90 line-clamp-2">
+                        {p.summary}
+                      </p>
                     )}
-                    {/* status pill removed per request */}
+                    <div className="mt-3 flex items-center justify-between text-sm">
+                      <div>
+                        <Link
+                          to="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedEvent(p);
+                          }}
+                          className="underline text-gray-300 decoration-gray-300 underline-offset-2 hover:text-gray-200 hover:decoration-gray-200"
+                        >
+                          View event
+                        </Link>
+                        <span className="ml-1 text-gray-300">→</span>
+                      </div>
+                      <div>
+                        {past ? (
+                          <button
+                            className="rounded-md bg-gray-500 px-3 py-1.5 text-xs font-medium text-white opacity-70 cursor-not-allowed"
+                            disabled
+                          >
+                            Registration closed
+                          </button>
+                        ) : session ? (
+                          <button
+                            onClick={() => handleRegister(p)}
+                            className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800"
+                          >
+                            Register
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openLoginFlow(p.id)}
+                            className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800"
+                          >
+                            Login to register
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {p.summary && (
-                    <p className="mt-2 text-sm text-white/90 line-clamp-2">
-                      {p.summary}
-                    </p>
-                  )}
-                  <div className="mt-3 text-sm">
-                    {/* GREY link; open modal */}
-                    <Link
-                      to="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setSelectedEvent(p);
-                      }}
-                      className="underline text-gray-300 decoration-gray-300 underline-offset-2 hover:text-gray-200 hover:decoration-gray-200"
-                    >
-                      View event
-                    </Link>
-                    <span className="ml-1 text-gray-300">→</span>
-                  </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
 
           <div className="mt-8 flex justify-center">
@@ -333,14 +470,12 @@ export default function PublicEvents() {
         </div>
       </section>
 
-      {/* Modal for event details */}
       {selectedEvent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
           onClick={(e) => {
-            // Close only when clicking the backdrop, not the content
             if (e.target === e.currentTarget) setSelectedEvent(null);
           }}
         >
@@ -356,7 +491,6 @@ export default function PublicEvents() {
               <X className="h-6 w-6" />
             </button>
 
-            {/* Cover image */}
             {selectedEvent.cover_url && (
               <img
                 src={selectedEvent.cover_url}
@@ -395,11 +529,35 @@ export default function PublicEvents() {
                 {selectedEvent.description}
               </p>
             )}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              {isPastEvent(selectedEvent) ? (
+                <button
+                  className="rounded-md bg-gray-500 px-4 py-2 text-sm font-medium text-white opacity-70 cursor-not-allowed"
+                  disabled
+                >
+                  Registration closed
+                </button>
+              ) : session ? (
+                <button
+                  className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+                  onClick={() => goToDashboardEvents(selectedEvent.id)}
+                >
+                  Register
+                </button>
+              ) : (
+                <button
+                  className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+                  onClick={() => openLoginFlow(selectedEvent.id)}
+                >
+                  Login to register
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Schedule */}
       <section className="max-w-5xl mx-auto px-4 py-14">
         <div className="rounded-2xl border border-gray-200 p-6 sm:p-8">
           <h2 className="text-center text-3xl font-semibold">Events Schedule</h2>
@@ -423,22 +581,44 @@ export default function PublicEvents() {
                   </button>
                   {isOpen && (
                     <div className="pt-4">
-                      {day.items.map((it: Project & { id: string }) => (
-                        <div
-                          key={it.id}
-                          className="grid grid-cols-[90px_1fr_110px_1fr_1fr] items-center gap-3 px-4 py-3 border-b"
-                        >
-                          <div className="text-sm text-gray-700">--:--</div>
-                          <div className="text-sm text-gray-900">{it.title}</div>
-                          <div className="text-sm text-gray-700">{it.status ?? "—"}</div>
-                          <div className="text-sm text-gray-700">{it.location ?? "—"}</div>
-                          <div className="text-right">
-                            <button className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800">
-                              View details
-                            </button>
+                      {day.items.map((it: Project & { id: string }) => {
+                        const past = isPastEvent(it);
+                        return (
+                          <div
+                            key={it.id}
+                            className="grid grid-cols-[90px_1fr_110px_1fr_1fr] items-center gap-3 px-4 py-3 border-b"
+                          >
+                            <div className="text-sm text-gray-700">--:--</div>
+                            <div className="text-sm text-gray-900">{it.title}</div>
+                            <div className="text-sm text-gray-700">{it.status ?? "—"}</div>
+                            <div className="text-sm text-gray-700">{it.location ?? "—"}</div>
+                            <div className="text-right">
+                              {past ? (
+                                <button
+                                  className="rounded-md bg-gray-500 px-3 py-1.5 text-xs font-medium text-white opacity-70 cursor-not-allowed"
+                                  disabled
+                                >
+                                  Registration closed
+                                </button>
+                              ) : session ? (
+                                <button
+                                  onClick={() => goToDashboardEvents(it.id)}
+                                  className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800"
+                                >
+                                  Register
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openLoginFlow(it.id)}
+                                  className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800"
+                                >
+                                  Login to register
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </li>
@@ -449,6 +629,13 @@ export default function PublicEvents() {
       </section>
 
       <Footer />
+
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        isOpen={loginOpen as any}
+        onClose={() => setLoginOpen(false)}
+      />
     </div>
   );
 }

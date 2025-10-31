@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthProvider";
 import { format, isAfter } from "date-fns";
@@ -12,8 +12,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Trash2, Pencil, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { Trash2, Pencil, ChevronLeft, ChevronRight, Calendar, Loader2 } from "lucide-react";
 
+/* ---------- Types ---------- */
 type Status = "draft" | "published" | "archived";
 type Visibility = "public" | "private";
 
@@ -33,6 +34,236 @@ type DBProject = {
   updated_at: string;
 };
 
+type RegistrationStatus = "pending" | "approved" | "declined";
+
+/* ---------- Registrations Full-Page Modal ---------- */
+function ProjectRegistrationsModal({
+  open,
+  onClose,
+  project,
+}: {
+  open: boolean;
+  onClose: () => void;
+  project: DBProject | null;
+}) {
+  type RegStatus = "pending" | "approved" | "declined";
+  type Row = {
+    id: string;
+    event_id: string;
+    user_id: string;
+    status: RegStatus;
+    created_at: string;
+    updated_at: string;
+  };
+  type Profile = { id: string; full_name?: string | null; email?: string | null };
+
+  const [regs, setRegs] = useState<Row[]>([]);
+  const [profilesMap, setProfilesMap] = useState<Record<string, Profile>>({});
+  const [loading, setLoading] = useState<boolean>(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const load = async () => {
+    if (!project) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const { data: regRows, error: regErr } = await supabase
+        .from("event_registrations")
+        .select("id,event_id,user_id,status,created_at,updated_at")
+        .eq("event_id", project.id)
+        .order("created_at", { ascending: false });
+
+      if (regErr) throw regErr;
+
+      const rows = ((regRows ?? []) as any[]) || [];
+      setRegs(rows as Row[]);
+
+      const userIds = Array.from(new Set(rows.map((r) => r.user_id))).filter(Boolean);
+      if (userIds.length) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", userIds);
+        const map: Record<string, Profile> = {};
+        (profs as Profile[] | null)?.forEach((p) => (map[p.id] = p));
+        setProfilesMap(map);
+      } else {
+        setProfilesMap({});
+      }
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to load registrations");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !project?.id) return;
+    load();
+    const ch = supabase
+      .channel(`event-regs-${project.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "event_registrations", filter: `event_id=eq.${project.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [open, project?.id]);
+
+  const approve = async (id: string) => {
+    setActingId(id);
+    setRegs((prev) => prev.map((r) => (r.id === id ? { ...r, status: "approved" } : r)));
+    try {
+      const { error } = await supabase
+        .from("event_registrations")
+        .update({ status: "approved" })
+        .eq("id", id);
+      if (error) throw error;
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to approve.");
+      setRegs((prev) => prev.map((r) => (r.id === id ? { ...r, status: "pending" } : r)));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const decline = async (id: string) => {
+    setActingId(id);
+    setRegs((prev) => prev.map((r) => (r.id === id ? { ...r, status: "declined" } : r)));
+    try {
+      const { error } = await supabase
+        .from("event_registrations")
+        .update({ status: "declined" })
+        .eq("id", id);
+      if (error) throw error;
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to decline.");
+      setRegs((prev) => prev.map((r) => (r.id === id ? { ...r, status: "pending" } : r)));
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const total = regs.length;
+  const pending = regs.filter((r) => r.status === "pending").length;
+  const approved = regs.filter((r) => r.status === "approved").length;
+  const declined = regs.filter((r) => r.status === "declined").length;
+
+  const nameOf = (user_id: string) => profilesMap[user_id]?.full_name || "(no name)";
+  const emailOf = (user_id: string) => profilesMap[user_id]?.email || "";
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : null)}>
+      <DialogContent className="w-[95vw] max-w-[1200px] h-[85vh] bg-white p-0 overflow-hidden">
+        <div className="flex flex-col h-full">
+          <DialogHeader className="px-6 pt-6 pb-0 pr-16">
+            <div className="flex flex-col gap-4">
+              <DialogTitle className="text-2xl leading-tight">
+                {project ? project.title : "Project"}
+              </DialogTitle>
+
+              <div className="flex flex-col gap-2">
+                <DialogDescription className="text-sm">
+                  Review and manage registrations for this project.
+                </DialogDescription>
+
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-muted-foreground">total: {total}</span>
+                  <span className="text-muted-foreground">pending: {pending}</span>
+                  <span className="text-gray-700">approved: {approved}</span>
+                  <span className="text-gray-700">declined: {declined}</span>
+                </div>
+
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  {project?.start_date ? format(new Date(project.start_date), "MMM dd, yyyy") : "No date"}
+                  {project?.end_date ? ` – ${format(new Date(project.end_date), "MMM dd, yyyy")}` : ""}
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto px-6 py-4">
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                loading registrations…
+              </div>
+            ) : err ? (
+              <div className="text-sm text-red-600">{err}</div>
+            ) : total === 0 ? (
+              <div className="text-sm text-gray-600">No registrations yet.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white border-b">
+                  <tr className="text-left">
+                    <th className="py-2 pr-3 font-medium">name</th>
+                    <th className="py-2 px-3 font-medium">email</th>
+                    <th className="py-2 px-3 font-medium">status</th>
+                    <th className="py-2 px-3 font-medium">registered</th>
+                    <th className="py-2 pl-3 font-medium text-right">action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regs.map((r) => (
+                    <tr key={r.id} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3">{nameOf(r.user_id)}</td>
+                      <td className="py-2 px-3">{emailOf(r.user_id)}</td>
+                      <td className="py-2 px-3">
+                        {r.status === "approved" ? (
+                          <span className="text-sm text-gray-900">approved</span>
+                        ) : r.status === "declined" ? (
+                          <Badge className="bg-red-600 text-white hover:bg-red-700">declined</Badge>
+                        ) : (
+                          <Badge variant="secondary">pending</Badge>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        {format(new Date(r.created_at), "MMM dd, yyyy • hh:mm a")}
+                      </td>
+                      <td className="py-2 pl-3">
+                        <div className="flex items-center gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => approve(r.id)}
+                            disabled={actingId === r.id || r.status === "approved"}
+                          >
+                            {actingId === r.id && r.status !== "approved" ? "Working…" : "Approve"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border"
+                            onClick={() => decline(r.id)}
+                            disabled={actingId === r.id || r.status === "declined"}
+                          >
+                            {actingId === r.id && r.status !== "declined" ? "Working…" : "Decline"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="border-t px-6 py-4">
+            <div className="flex justify-end">
+              <Button onClick={onClose}>Close</Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- Create Project Modal ---------- */
 function CreateProjectModal({
   open,
   onClose,
@@ -179,7 +410,9 @@ function CreateProjectModal({
         </div>
 
         <DialogFooter className="pt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </Button>
@@ -189,6 +422,7 @@ function CreateProjectModal({
   );
 }
 
+/* ---------- Edit Project Modal ---------- */
 function EditProjectModal({
   open,
   onClose,
@@ -346,7 +580,9 @@ function EditProjectModal({
         </div>
 
         <DialogFooter className="pt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Saving…" : "Save changes"}
           </Button>
@@ -356,6 +592,7 @@ function EditProjectModal({
   );
 }
 
+/* ---------- Confirm Delete ---------- */
 function ConfirmDeleteDialog({
   open,
   onClose,
@@ -387,7 +624,9 @@ function ConfirmDeleteDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="pt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button variant="destructive" onClick={handle} disabled={busy}>
             {busy ? "Deleting…" : "Delete"}
           </Button>
@@ -397,6 +636,7 @@ function ConfirmDeleteDialog({
   );
 }
 
+/* ---------- Main Page ---------- */
 export default function AdminProjects() {
   const { session } = useAuth();
   const [rows, setRows] = useState<DBProject[]>([]);
@@ -408,6 +648,13 @@ export default function AdminProjects() {
   const [toEdit, setToEdit] = useState<DBProject | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete] = useState<DBProject | null>(null);
+
+  const [regsOpen, setRegsOpen] = useState(false);
+  const [projectForRegs, setProjectForRegs] = useState<DBProject | null>(null);
+
+  const [regCounts, setRegCounts] = useState<
+    Record<string, { total: number; pending: number; approved: number; declined: number }>
+  >({});
 
   const outlineLight = "bg-white text-black border border-gray-300 hover:bg-gray-50";
 
@@ -421,7 +668,27 @@ export default function AdminProjects() {
         .order("start_date", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
-      setRows((data ?? []) as DBProject[]);
+      const projects = (data ?? []) as DBProject[];
+      setRows(projects);
+
+      const { data: counts, error: countsErr } = await supabase
+        .from("project_reg_counts_v")
+        .select("*");
+      if (!countsErr && counts) {
+        const map: Record<string, any> = {};
+        counts.forEach(
+          (c: any) =>
+            (map[c.project_id] = {
+              total: c.total,
+              pending: c.pending,
+              approved: c.approved,
+              declined: c.declined,
+            })
+        );
+        setRegCounts(map);
+      } else {
+        setRegCounts({});
+      }
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load projects");
     } finally {
@@ -434,12 +701,21 @@ export default function AdminProjects() {
   }, []);
 
   useEffect(() => {
-    const ch = supabase
+    const chProjects = supabase
       .channel("projects-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, () => load())
       .subscribe();
+
+    const chRegs = supabase
+      .channel("event-registrations-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_registrations" }, () =>
+        load()
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(ch);
+      supabase.removeChannel(chProjects);
+      supabase.removeChannel(chRegs);
     };
   }, []);
 
@@ -586,16 +862,37 @@ export default function AdminProjects() {
     }
   }
 
+  const regCountText = (projectId: string) => {
+    const c = regCounts[projectId];
+    const count = c?.total ?? 0;
+    return <span className="text-xs text-gray-500">{count} regs</span>;
+  };
+
   const renderDateLine = (p: DBProject, small = false) => {
-    const start = p.start_date ? format(new Date(p.start_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy") : null;
-    const end = p.end_date ? format(new Date(p.end_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy") : null;
+    const start = p.start_date
+      ? format(new Date(p.start_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy")
+      : null;
+    const end = p.end_date
+      ? format(new Date(p.end_date), small ? "MMM dd, yyyy" : "MMMM dd, yyyy")
+      : null;
     const label = start ? (end ? `${start} – ${end}` : start) : "No date";
     return (
-      <div className={small ? "text-xs text-gray-500 flex items-center gap-2" : "text-sm text-gray-500 flex items-center gap-2"}>
+      <div
+        className={
+          small
+            ? "text-xs text-gray-500 flex items-center gap-2"
+            : "text-sm text-gray-500 flex items-center gap-2"
+        }
+      >
         <Calendar className="h-4 w-4 text-muted-foreground" />
         <span>{label}</span>
       </div>
     );
+  };
+
+  const openRegistrations = (p: DBProject) => {
+    setProjectForRegs(p);
+    setRegsOpen(true);
   };
 
   const renderCard = (p: DBProject) => (
@@ -603,12 +900,21 @@ export default function AdminProjects() {
       <img
         src={p.cover_url || "https://via.placeholder.com/400x200"}
         alt={p.title}
-        className="w-full h-48 object-cover"
+        className="w-full h-48 object-cover cursor-pointer"
+        onClick={() => openRegistrations(p)}
       />
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-lg font-semibold truncate">{p.title}</h3>
-          <Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status}</Badge>
+          <div className="min-w-0">
+            <h3
+              className="text-lg font-semibold cursor-pointer truncate"
+              title={p.title}
+              onClick={() => openRegistrations(p)}
+            >
+              {p.title}
+            </h3>
+            <div className="mt-0.5">{regCountText(p.id)}</div>
+          </div>
         </div>
 
         {p.summary && <p className="text-sm text-gray-600 line-clamp-2">{p.summary}</p>}
@@ -616,10 +922,28 @@ export default function AdminProjects() {
         {renderDateLine(p, false)}
 
         <div className="flex gap-2 pt-2">
-          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToEdit(p); setEditOpen(true); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={outlineLight}
+            onClick={(e) => {
+              e.stopPropagation();
+              setToEdit(p);
+              setEditOpen(true);
+            }}
+          >
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
-          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToDelete(p); setDeleteOpen(true); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={outlineLight}
+            onClick={(e) => {
+              e.stopPropagation();
+              setToDelete(p);
+              setDeleteOpen(true);
+            }}
+          >
             <Trash2 className="w-4 h-4 mr-1" /> Delete
           </Button>
         </div>
@@ -628,16 +952,28 @@ export default function AdminProjects() {
   );
 
   const renderCardCarousel = (p: DBProject) => (
-    <div key={p.id} className="w-64 sm:w-72 flex-shrink-0 bg-white rounded border overflow-hidden hover:shadow-sm transition">
+    <div
+      key={p.id}
+      className="w-64 sm:w-72 flex-shrink-0 bg-white rounded border overflow-hidden hover:shadow-sm transition"
+    >
       <img
         src={p.cover_url || "https://via.placeholder.com/400x200"}
         alt={p.title}
-        className="w-full h-36 object-cover"
+        className="w-full h-36 object-cover cursor-pointer"
+        onClick={() => openRegistrations(p)}
       />
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-base font-semibold truncate">{p.title}</h3>
-          <Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status}</Badge>
+          <div className="min-w-0">
+            <h3
+              className="text-base font-semibold cursor-pointer truncate"
+              title={p.title}
+              onClick={() => openRegistrations(p)}
+            >
+              {p.title}
+            </h3>
+            <div className="mt-0.5">{regCountText(p.id)}</div>
+          </div>
         </div>
 
         {p.summary && <p className="text-sm text-gray-600 line-clamp-2">{p.summary}</p>}
@@ -645,10 +981,28 @@ export default function AdminProjects() {
         {renderDateLine(p, true)}
 
         <div className="flex gap-2 pt-1">
-          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToEdit(p); setEditOpen(true); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={outlineLight}
+            onClick={(e) => {
+              e.stopPropagation();
+              setToEdit(p);
+              setEditOpen(true);
+            }}
+          >
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
-          <Button size="sm" variant="outline" className={outlineLight} onClick={() => { setToDelete(p); setDeleteOpen(true); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={outlineLight}
+            onClick={(e) => {
+              e.stopPropagation();
+              setToDelete(p);
+              setDeleteOpen(true);
+            }}
+          >
             <Trash2 className="w-4 h-4 mr-1" /> Delete
           </Button>
         </div>
@@ -674,7 +1028,7 @@ export default function AdminProjects() {
         <div className="mb-2">
           <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-sm text-muted-foreground">
-            Create, update, publish, archive, or delete. Published + Public appear in Connect & Public site.
+            Create, update, publish, archive, or delete. Click a project to view and manage registrations. Published + Public appear in Connect & Public site.
           </p>
         </div>
       </div>
@@ -682,12 +1036,18 @@ export default function AdminProjects() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold">Upcoming Projects</h2>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>New Project</Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            New Project
+          </Button>
         </div>
 
         <div className="relative border rounded-lg bg-white">
           <div ref={upcomingRef} className="flex gap-4 overflow-x-auto no-scrollbar p-4">
-            {upcoming.length ? upcoming.map(renderCardCarousel) : (
+            {loading ? (
+              <div className="text-sm text-gray-600">Loading…</div>
+            ) : upcoming.length ? (
+              upcoming.map(renderCardCarousel)
+            ) : (
               <p className="text-gray-500">No upcoming projects yet.</p>
             )}
           </div>
@@ -716,35 +1076,23 @@ export default function AdminProjects() {
       <section>
         <h2 className="text-2xl font-semibold mb-4">Past Projects</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {past.length ? past.map(renderCard) : (
+          {loading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : past.length ? (
+            past.map(renderCard)
+          ) : (
             <p className="text-gray-500">No past projects yet.</p>
           )}
         </div>
       </section>
 
-      <CreateProjectModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSave={createProject}
-      />
+      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} onSave={createProject} />
 
-      {toEdit && (
-        <EditProjectModal
-          open={editOpen}
-          onClose={() => setEditOpen(false)}
-          project={toEdit}
-          onSave={saveEdit}
-        />
-      )}
+      {toEdit && <EditProjectModal open={editOpen} onClose={() => setEditOpen(false)} project={toEdit} onSave={saveEdit} />}
 
-      {toDelete && (
-        <ConfirmDeleteDialog
-          open={deleteOpen}
-          onClose={() => setDeleteOpen(false)}
-          title={toDelete.title}
-          onConfirm={() => deleteProject(toDelete)}
-        />
-      )}
+      {toDelete && <ConfirmDeleteDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title={toDelete.title} onConfirm={() => deleteProject(toDelete)} />}
+
+      <ProjectRegistrationsModal open={regsOpen} onClose={() => setRegsOpen(false)} project={projectForRegs} />
     </div>
   );
 }

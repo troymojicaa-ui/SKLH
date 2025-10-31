@@ -1,16 +1,13 @@
-// src/App.tsx
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import { useIsMobile } from "./hooks/use-mobile";
 import LoginModal from "./components/auth/LoginModal";
 
-// Layouts
 import AdminLayout from "./components/layout/AdminLayout";
 import UserLayout from "./components/layout/UserLayout";
 
-// Public pages
 import Index from "./pages/Index";
 import AboutUs from "./pages/AboutUs";
 import Mission from "./pages/Mission";
@@ -19,16 +16,15 @@ import PublicProjectDetail from "./pages/PublicProjectDetail";
 import PublicEvents from "./pages/PublicEvents";
 import MobileHome from "./pages/MobileHome";
 
-// Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import YouthDatabase from "./pages/admin/YouthDatabase";
 import Projects from "./pages/admin/Projects";
 import EditAboutUs from "./pages/admin/EditAboutUs";
 import CalendarPage from "./pages/admin/Calendar";
 import Reports from "./pages/admin/Reports";
-import AdminFacilities from "@/pages/admin/Facilities";
+import AdminFacilities from "@/pages/admin/facilities/Facilities";
+import AdminGate from "./pages/admin/AdminGate";
 
-// User pages
 import UserDashboard from "./pages/user/UserDashboard";
 import UserProjects from "./pages/user/Projects";
 import UserRAI from "./pages/user/RAI";
@@ -37,11 +33,14 @@ import ReportCreate from "./pages/user/ReportCreate";
 import ReportSuccess from "./pages/user/ReportSuccess";
 import ReportDetail from "./pages/user/ReportDetail";
 import Events from "./pages/user/Events";
-import Facilities from "./pages/user/Facilities";
+import Facilities from "./pages/user/facilities/Facilities";
 
-// Auth helpers
+import ResetPassword from "./pages/auth/ResetPassword";
+
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "./context/AuthProvider";
+import FacilityDetail from "./pages/user/facilities/FacilityDetail";
 
 // Route guards
 import ProtectedRoute from "@/routes/ProtectedRoute";
@@ -64,6 +63,25 @@ function AdminLoginRoute() {
   );
 }
 
+function InlineLoading({ label }: { label: string }) {
+  return (
+    <div className="min-h-[40vh] w-full grid place-items-center">
+      <div className="flex items-center text-slate-700">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function AdminEntry() {
+  const { loading, session, role } = useAuth();
+  if (loading) return <InlineLoading label="Preparing admin…" />;
+  if (!session) return <AdminLoginRoute />;
+  if (role === "admin") return <Navigate to="/admin/app" replace />;
+  return <AdminGate />;
+}
+
 function CodeProxy() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -75,81 +93,75 @@ function CodeProxy() {
   return null;
 }
 
-async function waitForSession(timeoutMs = 3000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const { data } = await supabase.auth.getSession();
-    if (data?.session) return data.session;
-    await new Promise((r) => setTimeout(r, 80));
-  }
-  return null;
-}
-
 function AuthCallback() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get("code");
-      const desc = params.get("error_description");
-      const urlDest = params.get("dest");
+      try {
+        const url = new URL(window.location.href);
+        const params = new URLSearchParams(url.search);
+        const dest = (params.get("dest") as "admin" | "connect" | null) ?? null;
 
-      if (desc) {
-        setError(desc);
-        return;
-      }
+        const goDashboard = (d: "admin" | "connect" | null) => {
+          const path = d === "admin" ? "/admin/app" : "/dashboard";
+          window.history.replaceState(null, "", url.pathname + url.search);
+          window.location.replace(`${path}?t=${Date.now()}`);
+        };
 
-      if (!code) {
-        const { data: sessionRes } = await supabase.auth.getSession();
-        if (sessionRes?.session) {
-          await routeToPortal(urlDest as any);
-          return;
+        const goReset = (d: "admin" | "connect" | null) => {
+          const q = d ? `?dest=${d}` : "";
+          window.history.replaceState(null, "", url.pathname + url.search);
+          window.location.replace(`/reset-password${q}`);
+        };
+
+        const hash = new URLSearchParams(url.hash.slice(1));
+        const access_token = hash.get("access_token");
+        const refresh_token = hash.get("refresh_token");
+        const linkType = (hash.get("type") || "").toLowerCase();
+
+        const { data: sess0 } = await supabase.auth.getSession();
+        if (sess0?.session) {
+          if (linkType === "recovery") return goReset(dest);
+          return goDashboard(dest);
         }
-        setError("Missing auth code in URL.");
-        return;
-      }
 
-      const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
-      if (exErr) {
-        setError(exErr.message);
-        return;
-      }
+        if (access_token && refresh_token) {
+          const { error: setErr } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+          if (setErr) throw setErr;
+          window.history.replaceState(null, "", url.pathname + url.search);
+          if (linkType === "recovery") return goReset(dest);
+          return goDashboard(dest);
+        }
 
-      const session = await waitForSession();
-      if (!session) {
-        setError("Signed in, but session was not ready. Please try the link again.");
-        return;
-      }
+        const code = params.get("code");
+        if (code) {
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exErr) throw exErr;
+          return goDashboard(dest);
+        }
 
-      await routeToPortal(urlDest as any);
+        const { data: sess1 } = await supabase.auth.getSession();
+        if (sess1?.session) {
+          if (linkType === "recovery") return goReset(dest);
+          return goDashboard(dest);
+        }
+
+        throw new Error("No auth tokens or code found.");
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? "Sign-in failed. Please try again.");
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  async function routeToPortal(prefDest: "admin" | "connect" | null) {
-    let dest: "admin" | "connect" =
-      prefDest ||
-      (localStorage.getItem("post_login_dest") as any) ||
-      "connect";
-
-    if (!prefDest) {
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes?.user?.id;
-      if (uid) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .single();
-        const role = (prof?.role ?? "member").toString().toLowerCase();
-        dest = role === "admin" ? "admin" : "connect";
-      }
-    }
-
-    const path = dest === "admin" ? "/admin/app" : "/dashboard";
-    localStorage.removeItem("post_login_dest");
-    window.location.href = `${path}?t=${Date.now()}`;
-  }
 
   return (
     <div className="mx-auto mt-24 max-w-md p-6 text-center">
@@ -168,7 +180,6 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <CodeProxy />
-
       <Routes>
         <Route path="/" element={<RootRouterGate />} />
 
@@ -179,6 +190,7 @@ export default function App() {
         <Route path="/events" element={<PublicEvents />} />
 
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route path="/admin" element={<AdminLoginRoute />} />
 
@@ -205,6 +217,7 @@ export default function App() {
             <Route path="report/:id" element={<ReportDetail />} />
             <Route path="profile" element={<UserProfile />} />
             <Route path="facilities" element={<Facilities />} />
+            <Route path="facilities/:id" element={<FacilityDetail />} />
           </Route>
         </Route>
 

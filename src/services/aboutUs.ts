@@ -23,8 +23,8 @@ export type TimelineItemDTO = {
   date: string;
   title: string;
   description: string;
-  buttonLabel?: string;
-  buttonUrl?: string;
+  buttonLabel?: string | null;
+  buttonUrl?: string | null;
   sortOrder: number;
 };
 
@@ -47,8 +47,7 @@ async function uploadDataUrl(dataUrl: string, prefix: string) {
   const blob = await (await fetch(dataUrl)).blob();
   const ext = (blob.type.split("/")[1] || "bin").replace("+xml", "");
   const key = `${prefix}/${crypto.randomUUID()}.${ext}`;
-  const { data, error } = await supabase
-    .storage
+  const { data, error } = await supabase.storage
     .from("about")
     .upload(key, blob, { contentType: blob.type, upsert: false });
   if (error) throw error;
@@ -109,14 +108,16 @@ export async function fetchAboutUs(): Promise<AboutUsDTO> {
   };
 }
 
-/* ---------- save (upsert) ---------- */
+/* ---------- save (upsert + prune; generates ids for new rows) ---------- */
 export async function saveAboutUs(payload: AboutUsDTO) {
+  // Upload images if needed
   let heroUrl = payload.heroImage;
   if (isDataUrl(heroUrl)) heroUrl = await uploadDataUrl(heroUrl!, "hero");
 
   let whyImgUrl = payload.whyWeMadeThisImage;
   if (isDataUrl(whyImgUrl)) whyImgUrl = await uploadDataUrl(whyImgUrl!, "about");
 
+  // Settings
   const { error: sErr } = await supabase.from("settings_about_us").upsert({
     id: 1,
     hero_image_url: heroUrl ?? null,
@@ -132,12 +133,13 @@ export async function saveAboutUs(payload: AboutUsDTO) {
   });
   if (sErr) throw sErr;
 
+  // Team — ensure every row has an id so prune step keeps them
   const teamRows = await Promise.all(
     payload.team.map(async (m, idx) => {
       let avatar = m.avatarUrl ?? null;
       if (isDataUrl(avatar)) avatar = await uploadDataUrl(avatar!, "avatars");
       return {
-        id: m.id || undefined,
+        id: m.id ?? crypto.randomUUID(),
         name: m.name,
         role: m.role ?? null,
         bio: m.bio ?? null,
@@ -146,29 +148,72 @@ export async function saveAboutUs(payload: AboutUsDTO) {
       };
     })
   );
-  const { error: tErr } = await supabase
-    .from("team_members")
-    .upsert(teamRows, { onConflict: "id" });
-  if (tErr) throw tErr;
 
+  if (teamRows.length) {
+    const { error: upErr } = await supabase
+      .from("team_members")
+      .upsert(teamRows, { onConflict: "id" });
+    if (upErr) throw upErr;
+  }
+
+  // Prune removed team rows
+  const { data: existingTeam, error: exTeamErr } = await supabase
+    .from("team_members")
+    .select("id");
+  if (exTeamErr) throw exTeamErr;
+
+  const keepTeamIds = new Set(teamRows.map((r) => r.id));
+  const toDeleteTeam = (existingTeam ?? [])
+    .map((r: any) => r.id as string)
+    .filter((id) => !keepTeamIds.has(id));
+
+  if (toDeleteTeam.length) {
+    const { error: delErr } = await supabase
+      .from("team_members")
+      .delete()
+      .in("id", toDeleteTeam);
+    if (delErr) throw delErr;
+  }
+
+  // Timeline — ensure id and allow empty button fields
   const tlRows = payload.timeline.map((t, idx) => ({
-    id: t.id || undefined,
+    id: t.id ?? crypto.randomUUID(),
     date_text: t.date,
     title: t.title,
     description: t.description,
-    button_label: t.buttonLabel ?? null,
-    button_url: t.buttonUrl ?? null,
+    button_label: t.buttonLabel?.trim() || null,
+    button_url: t.buttonUrl?.trim() || null,
     sort_order: idx,
   }));
-  const { error: tlErr } = await supabase
-    .from("timeline_items")
-    .upsert(tlRows, { onConflict: "id" });
-  if (tlErr) throw tlErr;
 
-  return true;
+  if (tlRows.length) {
+    const { error: upTlErr } = await supabase
+      .from("timeline_items")
+      .upsert(tlRows, { onConflict: "id" });
+    if (upTlErr) throw upTlErr;
+  }
+
+  // Prune removed timeline rows
+  const { data: existingTl, error: exTlErr } = await supabase
+    .from("timeline_items")
+    .select("id");
+  if (exTlErr) throw exTlErr;
+
+  const keepTlIds = new Set(tlRows.map((r) => r.id));
+  const toDeleteTl = (existingTl ?? [])
+    .map((r: any) => r.id as string)
+    .filter((id) => !keepTlIds.has(id));
+
+  if (toDeleteTl.length) {
+    const { error: delTlErr } = await supabase
+      .from("timeline_items")
+      .delete()
+      .in("id", toDeleteTl);
+    if (delTlErr) throw delTlErr;
+  }
 }
 
-/* ---------- deletes ---------- */
+/* ---------- deletes (used by inline remove buttons) ---------- */
 export async function deleteTeamMember(id: string) {
   const { error } = await supabase.from("team_members").delete().eq("id", id);
   if (error) throw error;

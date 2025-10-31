@@ -22,10 +22,10 @@ type UIEvent = {
 
 type RegistrationMap = Record<
   string,
-  { status: "pending" | "approved" | "denied"; id: string } | undefined
+  { status: "pending" | "approved" | "declined"; id: string } | undefined
 >;
 
-const HEADER_BLUE = "#0C4A6E"; // match your header color if different
+const HEADER_BLUE = "#0C4A6E";
 
 function coalesce<T>(...vals: (T | undefined | null | "")[]) {
   for (const v of vals) if (v !== undefined && v !== null && v !== "") return v as T;
@@ -43,6 +43,9 @@ function joinDateTime(dateStr?: string, timeStr?: string): string | undefined {
 }
 
 function mapProjectRow(row: any): UIEvent | null {
+  // Require a real projects.id (to satisfy FK)
+  if (!row?.id) return null;
+
   const startISO =
     coalesce<string>(
       row.starts_at,
@@ -79,11 +82,9 @@ function mapProjectRow(row: any): UIEvent | null {
   const rawMode = (coalesce<string>(row.mode, row.type, row.format, row.project_type) ?? "")
     .toString()
     .toLowerCase();
-  const mode: UIEvent["mode"] | undefined = rawMode.includes("online")
-    ? "online"
-    : rawMode.includes("person") || rawMode.includes("onsite")
-    ? "in-person"
-    : undefined;
+  const mode: UIEvent["mode"] | undefined =
+    rawMode.includes("online") ? "online" :
+    (rawMode.includes("person") || rawMode.includes("onsite")) ? "in-person" : undefined;
 
   let speakers: string[] | undefined;
   if (Array.isArray(row.speakers)) speakers = row.speakers;
@@ -104,7 +105,7 @@ function mapProjectRow(row: any): UIEvent | null {
     ) ?? null;
 
   return {
-    id: String(coalesce(row.id, row.uuid, row.slug, Math.random().toString(36).slice(2))),
+    id: String(row.id), // <-- strictly use projects.id
     title: String(coalesce(row.title, row.name, row.project_title, "Untitled")),
     startISO,
     endISO,
@@ -127,7 +128,6 @@ export default function Events() {
   );
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
 
-  // ---- auth ----
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -135,7 +135,6 @@ export default function Events() {
     })();
   }, []);
 
-  // ---- fetch projects ----
   async function fetchProjects() {
     setLoading(true);
     setErr(null);
@@ -162,8 +161,6 @@ export default function Events() {
 
   useEffect(() => {
     fetchProjects();
-
-    // ✅ Correct Supabase v2 Realtime usage
     const channel = supabase
       .channel("projects-live")
       .on(
@@ -185,62 +182,70 @@ export default function Events() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- fetch registrations for current user ----
   useEffect(() => {
     (async () => {
       if (!userId || events.length === 0) return;
       const ids = events.map((e) => e.id);
       const { data, error } = await supabase
-        .from("project_registrations")
-        .select("id, project_id, status")
-        .in("project_id", ids)
+        .from("event_registrations")
+        .select("id, event_id, status")
+        .in("event_id", ids)
         .eq("user_id", userId);
 
       if (!error && data) {
         const map: RegistrationMap = {};
-        for (const r of data) map[String(r.project_id)] = { id: r.id, status: r.status };
+        for (const r of data)
+          map[String((r as any).event_id)] = {
+            id: (r as any).id,
+            status: (r as any).status,
+          };
         setRegs(map);
       }
     })();
   }, [userId, events]);
 
-  async function handleRegister(projectId: string) {
+  async function handleRegister(eventId: string) {
     if (!userId) {
       alert("Please log in first to register.");
       return;
     }
-    const f = form[projectId] ?? { first: "", last: "", idnum: "" };
-    if (!f.first || !f.last || !f.idnum) {
-      alert("Please fill in all fields.");
-      return;
-    }
 
-    setSubmitting((s) => ({ ...s, [projectId]: true }));
+    setSubmitting((s) => ({ ...s, [eventId]: true }));
 
-    const payload = {
-      project_id: projectId,
-      user_id: userId,
-      first_name: f.first,
-      last_name: f.last,
-      id_number: f.idnum,
-      status: "pending" as const,
-    };
+    try {
+      // Already registered?
+      const { data: existing, error: checkErr } = await supabase
+        .from("event_registrations")
+        .select("id, status")
+        .eq("event_id", eventId)
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    const { data, error } = await supabase
-      .from("project_registrations")
-      .upsert(payload, { onConflict: "project_id,user_id" })
-      .select("id,status")
-      .single();
+      if (checkErr) throw checkErr;
 
-    setSubmitting((s) => ({ ...s, [projectId]: false }));
+      if (existing) {
+        setRegs((r) => ({ ...r, [eventId]: { id: existing.id, status: existing.status } }));
+      } else {
+        // Insert minimal valid columns; defaults/RLS handle the rest
+        const { data: inserted, error: insErr } = await supabase
+          .from("event_registrations")
+          .insert({ event_id: eventId, user_id: userId }) // status/created_at/updated_at via defaults
+          .select("id, status")
+          .single();
 
-    if (error) {
-      console.error(error);
+        if (insErr) throw insErr;
+
+        setRegs((r) => ({
+          ...r,
+          [eventId]: { id: (inserted as any).id, status: (inserted as any).status },
+        }));
+      }
+    } catch (e: any) {
+      console.error("Registration insert failed:", e?.message ?? e);
       alert("Registration failed. Please try again.");
-      return;
+    } finally {
+      setSubmitting((s) => ({ ...s, [eventId]: false }));
     }
-
-    setRegs((r) => ({ ...r, [projectId]: { id: data!.id, status: data!.status } }));
   }
 
   return (
@@ -287,7 +292,6 @@ export default function Events() {
                   </p>
                 </div>
 
-                {/* Details */}
                 {ev.description && (
                   <div className="mt-4">
                     <h3 className="text-sm font-semibold">Details</h3>
@@ -295,7 +299,6 @@ export default function Events() {
                   </div>
                 )}
 
-                {/* IMAGE between Details and Register */}
                 {ev.imageUrl && (
                   <div className="mt-4">
                     <img
@@ -307,7 +310,6 @@ export default function Events() {
                   </div>
                 )}
 
-                {/* REGISTER block (dark blue bg, white text/inputs/button) */}
                 <div
                   className="mt-4 rounded-xl p-4"
                   style={{ backgroundColor: HEADER_BLUE, color: "white" }}
@@ -315,12 +317,12 @@ export default function Events() {
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold">Register for this event</h3>
                     {applied && (
-                      <span className="inline-flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded">
+                      <span className="inline-flex items-center gap-1 text-xs bg:white/10 px-2 py-1 rounded">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {reg!.status === "approved"
                           ? "Approved"
-                          : reg!.status === "denied"
-                          ? "Denied"
+                          : reg!.status === "declined"
+                          ? "Declined"
                           : "Applied (pending)"}
                       </span>
                     )}
@@ -329,7 +331,7 @@ export default function Events() {
                   {!applied ? (
                     <div className="mt-3 space-y-2">
                       <Input
-                        placeholder="First name"
+                        placeholder="First name (optional)"
                         value={form[ev.id]?.first ?? ""}
                         onChange={(e) =>
                           setForm((f) => ({
@@ -340,7 +342,7 @@ export default function Events() {
                         className="bg-white text-black placeholder:text-gray-500"
                       />
                       <Input
-                        placeholder="Last name"
+                        placeholder="Last name (optional)"
                         value={form[ev.id]?.last ?? ""}
                         onChange={(e) =>
                           setForm((f) => ({
@@ -348,10 +350,10 @@ export default function Events() {
                             [ev.id]: { ...(f[ev.id] ?? { first: "", idnum: "" }), last: e.target.value },
                           }))
                         }
-                        className="bg-white text-black placeholder:text-gray-500"
+                        className="bg:white text-black placeholder:text-gray-500"
                       />
                       <Input
-                        placeholder="ID Number"
+                        placeholder="ID Number (optional)"
                         value={form[ev.id]?.idnum ?? ""}
                         onChange={(e) =>
                           setForm((f) => ({
@@ -359,10 +361,9 @@ export default function Events() {
                             [ev.id]: { ...(f[ev.id] ?? { first: "", last: "" }), idnum: e.target.value },
                           }))
                         }
-                        className="bg-white text-black placeholder:text-gray-500"
+                        className="bg:white text-black placeholder:text-gray-500"
                       />
 
-                      {/* White button with blue text */}
                       <Button
                         type="button"
                         onClick={() => handleRegister(ev.id)}

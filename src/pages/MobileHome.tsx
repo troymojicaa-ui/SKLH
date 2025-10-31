@@ -1,23 +1,19 @@
 // src/pages/MobileHome.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import LoginModal from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
-import {
-  ChevronRight,
-  Target,
-  Eye,
-  Sparkles,
-  CalendarDays,
-  Images,
-} from "lucide-react";
+import { ChevronRight, Target, Eye, Sparkles, CalendarDays, MapPin } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
+import { supabase } from "@/lib/supabaseClient";
+import { format } from "date-fns";
 
 /** Small decorative avatar image used in the hero */
 function FloatyImg({ className = "" }: { className?: string }) {
@@ -29,29 +25,85 @@ function FloatyImg({ className = "" }: { className?: string }) {
   );
 }
 
+type Project = {
+  id: string;
+  title: string;
+  summary: string | null;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  cover_url: string | null;
+  cover_path: string | null;
+  location: string | null;
+  status: string | null;
+  visibility: string | null;
+  mode?: string | null;
+  speakers?: string[] | null;
+};
+
+function safeDate(s?: string | null) {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatDateRange(start?: string | null, end?: string | null) {
+  const sd = safeDate(start);
+  const ed = safeDate(end);
+  if (!sd) return "";
+  const left = format(sd, "EEE dd MMM yyyy");
+  if (!ed) return left;
+  const sameDay =
+    sd.getFullYear() === ed.getFullYear() &&
+    sd.getMonth() === ed.getMonth() &&
+    sd.getDate() === ed.getDate();
+  return sameDay ? left : `${left} – ${format(ed, "EEE dd MMM yyyy")}`;
+}
+
+function startOfTodayISO() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return d.toISOString();
+}
+
 export default function MobileHome() {
   const [loginOpen, setLoginOpen] = useState(false);
+  const [upcoming, setUpcoming] = useState<Project | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .gte("start_date", startOfTodayISO())
+        .order("start_date", { ascending: true })
+        .limit(5); // small buffer; we'll still pick the closest below
+      if (error) return;
+      const items = (data || []).filter((p) => !!safeDate(p.start_date));
+      items.sort(
+        (a, b) =>
+          (safeDate(a.start_date)?.getTime() ?? 0) -
+          (safeDate(b.start_date)?.getTime() ?? 0)
+      );
+      setUpcoming(items[0] ?? null);
+    })();
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top nav */}
       <Header />
 
-      {/* HERO */}
       <section className="relative overflow-hidden">
-        {/* floating avatars */}
         <FloatyImg className="absolute left-4 top-6" />
         <FloatyImg className="absolute right-6 top-5" />
         <FloatyImg className="absolute -right-2 top-28 rotate-[12deg]" />
         <FloatyImg className="absolute left-3 top-[140px] rotate-[-8deg]" />
 
         <div className="px-4 pt-16 pb-8">
-          {/* small label, like desktop */}
           <div className="text-center text-sky-700 text-xs font-semibold tracking-wide">
             SK LOYOLA HEIGHTS
           </div>
 
-          {/* headline to match desktop wording */}
           <h1 className="mt-2 text-center text-4xl font-extrabold leading-tight text-slate-900">
             Empowering
             <br />
@@ -62,7 +114,6 @@ export default function MobileHome() {
             community.
           </h1>
 
-          {/* supporting line (same as desktop) */}
           <p className="mt-3 text-center text-[15px] text-slate-600">
             Stay updated with events and projects. Join SK Connect to submit
             reports, view facilities, and participate in local programs.
@@ -81,11 +132,9 @@ export default function MobileHome() {
             </Button>
           </div>
 
-          {/* hero placeholder panel */}
           <div className="mt-8 mx-auto h-40 w-full max-w-[340px] rounded-xl bg-gray-200" />
         </div>
 
-        {/* gradient band with three feature tiles */}
         <div className="bg-gradient-to-b from-sky-600 to-sky-500 text-white">
           <div className="grid grid-cols-1 divide-y divide-white/10">
             <FeatureTile
@@ -107,40 +156,70 @@ export default function MobileHome() {
         </div>
       </section>
 
-      {/* UPCOMING EVENTS */}
-      <SectionBlock
-        kicker="Upcoming Events"
-        title="Medium length section heading goes here"
-        desc="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique."
-      >
-        <div className="space-y-4">
-          {/* lead card */}
-          <div className="mx-auto h-32 w-[88%] rounded-xl bg-gray-200 shadow-sm" />
-          {/* thumbnails row */}
-          <div className="mt-2 grid grid-cols-3 gap-3 px-3">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-16 rounded-md bg-gray-200 shadow-sm" />
-            ))}
+      {/* Upcoming Event (dynamic) */}
+      <section className="py-8">
+        <div className="mx-auto max-w-md px-4">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">
+            Upcoming Event
           </div>
+          <h2 className="mt-1 text-xl font-semibold text-gray-900">
+            {upcoming ? upcoming.title : "No upcoming events yet"}
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            {upcoming?.summary ?? (upcoming ? "" : "Please check back soon.")}
+          </p>
         </div>
-      </SectionBlock>
 
-      {/* UPCOMING PROJECTS */}
-      <SectionBlock
-        kicker="Upcoming Projects"
-        title="Medium length section heading goes here"
-        desc="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique."
-      >
-        {/* mosaic grid */}
-        <div className="mt-3 grid grid-cols-2 gap-3 px-3">
-          <div className="col-span-2 h-40 rounded-xl bg-gray-200" />
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-20 rounded-lg bg-gray-200" />
-          ))}
-        </div>
-      </SectionBlock>
+        {upcoming && (
+          <div className="mt-4 px-4">
+            <div className="mx-auto max-w-md overflow-hidden rounded-xl ring-1 ring-gray-200">
+              <div className="aspect-[16/9] bg-gray-100">
+                <img
+                  src={
+                    upcoming.cover_url ??
+                    "https://via.placeholder.com/1200x675.png?text=Event+Cover"
+                  }
+                  alt={upcoming.title}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="bg-white p-4">
+                <div className="space-y-2 text-sm text-gray-700">
+                  {formatDateRange(upcoming.start_date, upcoming.end_date) && (
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-gray-600" />
+                      <span>
+                        {formatDateRange(upcoming.start_date, upcoming.end_date)}
+                      </span>
+                    </div>
+                  )}
+                  {upcoming.location && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-gray-600" />
+                      <span>{upcoming.location}</span>
+                    </div>
+                  )}
+                </div>
 
-      {/* GALLERY STRIP (quick, subtle) */}
+                <div className="mt-4 flex items-center justify-between">
+                  <Link
+                    to="/events"
+                    className="text-sm font-medium text-sky-700 underline underline-offset-2 hover:text-sky-800"
+                  >
+                    View all events
+                  </Link>
+                  <Link to="/events">
+                    <Button className="bg-sky-700 hover:bg-sky-800 text-white text-sm">
+                      See details
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="px-4">
         <div className="mx-auto max-w-md grid grid-cols-3 gap-3">
           {[...Array(6)].map((_, i) => (
@@ -149,7 +228,6 @@ export default function MobileHome() {
         </div>
       </section>
 
-      {/* FAQ */}
       <section className="px-4 py-10">
         <div className="mx-auto max-w-md">
           <h2 className="text-center text-lg font-semibold">FAQs</h2>
@@ -170,29 +248,8 @@ export default function MobileHome() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="px-4 py-10">
-        <div className="mx-auto max-w-md">
-          <h3 className="text-lg font-semibold">
-            Call to action to participate in a project or event
-          </h3>
-          <p className="mt-2 text-sm text-gray-600">
-            Invite people to volunteer, donate, or sign up for activities. Keep it
-            short; add a button that routes to your Projects or Events page.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Button className="bg-sky-700 hover:bg-sky-800">Button</Button>
-            <Button variant="outline">
-              Gallery
-              <Images className="ml-1 h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </section>
-
       <Footer />
 
-      {/* User (Connect) login modal */}
       <LoginModal
         isOpen={loginOpen}
         onClose={() => setLoginOpen(false)}
@@ -223,31 +280,6 @@ function FeatureTile({
         <p className="mt-1 text-[12px] leading-relaxed text-white/90">{desc}</p>
       </div>
     </div>
-  );
-}
-
-function SectionBlock({
-  kicker,
-  title,
-  desc,
-  children,
-}: {
-  kicker: string;
-  title: string;
-  desc: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="py-8">
-      <div className="mx-auto max-w-md px-4">
-        <div className="text-[11px] uppercase tracking-wide text-gray-500">
-          {kicker}
-        </div>
-        <h2 className="mt-1 text-xl font-semibold text-gray-900">{title}</h2>
-        <p className="mt-2 text-sm text-gray-600">{desc}</p>
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
   );
 }
 
