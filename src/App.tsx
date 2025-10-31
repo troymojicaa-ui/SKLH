@@ -42,6 +42,10 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthProvider";
 import FacilityDetail from "./pages/user/facilities/FacilityDetail";
 
+// Route guards
+import ProtectedRoute from "@/routes/ProtectedRoute";
+import AdminRoute from "@/routes/AdminRoute";
+
 const queryClient = new QueryClient();
 
 function RootRouterGate() {
@@ -57,25 +61,6 @@ function AdminLoginRoute() {
       <LoginModal isOpen={open} onClose={() => setOpen(false)} role="admin" />
     </>
   );
-}
-
-function InlineLoading({ label }: { label: string }) {
-  return (
-    <div className="min-h-[40vh] w-full grid place-items-center">
-      <div className="flex items-center text-slate-700">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span>{label}</span>
-      </div>
-    </div>
-  );
-}
-
-function AdminEntry() {
-  const { loading, session, role } = useAuth();
-  if (loading) return <InlineLoading label="Preparing admin…" />;
-  if (!session) return <AdminLoginRoute />;
-  if (role === "admin") return <Navigate to="/admin/app" replace />;
-  return <AdminGate />;
 }
 
 function CodeProxy() {
@@ -188,29 +173,33 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Route path="/admin" element={<AdminEntry />} />
+        <Route path="/admin" element={<AdminLoginRoute />} />
 
-        <Route path="/admin/app" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="youth-database" element={<YouthDatabase />} />
-          <Route path="projects" element={<Projects />} />
-          <Route path="about" element={<EditAboutUs />} />
-          <Route path="calendar" element={<CalendarPage />} />
-          <Route path="facilities" element={<AdminFacilities />} />
+        <Route element={<AdminRoute />}>
+          <Route path="/admin/app" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="youth-database" element={<YouthDatabase />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="about" element={<EditAboutUs />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            <Route path="facilities" element={<AdminFacilities />} />
+          </Route>
         </Route>
 
-        <Route path="/dashboard" element={<UserLayout />}>
-          <Route index element={<UserDashboard />} />
-          <Route path="events" element={<Events />} />
-          <Route path="projects" element={<UserProjects />} />
-          <Route path="report" element={<UserRAI />} />
-          <Route path="report/new" element={<ReportCreate />} />
-          <Route path="report/success" element={<ReportSuccess />} />
-          <Route path="report/:id" element={<ReportDetail />} />
-          <Route path="profile" element={<UserProfile />} />
-          <Route path="facilities" element={<Facilities />} />
-          <Route path="facilities/:id" element={<FacilityDetail />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<UserLayout />}>
+            <Route index element={<UserDashboard />} />
+            <Route path="events" element={<Events />} />
+            <Route path="projects" element={<UserProjects />} />
+            <Route path="report" element={<UserRAI />} />
+            <Route path="report/new" element={<ReportCreate />} />
+            <Route path="report/success" element={<ReportSuccess />} />
+            <Route path="report/:id" element={<ReportDetail />} />
+            <Route path="profile" element={<UserProfile />} />
+            <Route path="facilities" element={<Facilities />} />
+            <Route path="facilities/:id" element={<FacilityDetail />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Index />} />

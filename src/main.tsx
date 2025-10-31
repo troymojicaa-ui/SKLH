@@ -18,7 +18,7 @@ import "./App.css";
 
 import App from "./App";
 // IMPORTANT: use the named export from the Provider we added (with inactivity auto-logout)
-import { AuthProvider } from "@/context/AuthProvider";
+import AuthProvider from '@/context/AuthProvider'
 
 const updateSW = registerSW({
   onNeedRefresh() {

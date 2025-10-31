@@ -1,11 +1,11 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '@/context/AuthProvider';
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth } from "@/context/AuthProvider";
 
 export default function ProtectedRoute() {
   const { session, loading } = useAuth();
-  const location = useLocation();
 
-  if (loading) return null; // or a spinner
-  return session ? <Outlet /> : <Navigate to="/login" replace state={{ from: location }} />;
+  if (loading) return null;
+  if (!session) return <Navigate to="/" replace />;
+
+  return <Outlet />;
 }
-
