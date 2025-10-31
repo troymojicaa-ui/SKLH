@@ -3,26 +3,37 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserCircle, Shield } from "lucide-react"; // icons hidden on desktop
+import { UserCircle, Shield } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  role: "admin" | "user"; // "user" is your Connect side
+  role: "admin" | "user";
 }
 
 const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [isLoading, setIsLoading] = useState(false);        // password sign-in
-  const [isSendingLink, setIsSendingLink] = useState(false); // magic link
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSendingLink, setIsSendingLink] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const redirectAfterAuth = () => {
-    // Final redirect when using password login
-    const dest = role === "admin" ? "/admin/app" : "/connect/app";
+  const redirectByProfileRole = async () => {
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user?.id;
+    if (!userId) {
+      window.location.href = "/connect/app";
+      return;
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single();
+    const r = (profile?.role ?? "user") as "admin" | "user";
+    const dest = r === "admin" ? "/admin/app" : "/connect/app";
     window.location.href = dest;
   };
 
@@ -35,26 +46,20 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
       return;
     }
 
-    // If password is blank -> send magic link (passwordless)
     if (!password.trim()) {
       setIsSendingLink(true);
       try {
-        // tell the callback where to go
         const dest = role === "admin" ? "admin" : "connect";
         const redirect = `${window.location.origin}/auth/callback?dest=${dest}`;
-
-        // also keep a local fallback in case the query param is lost
         localStorage.setItem("post_login_dest", dest);
-
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            shouldCreateUser: false, // require existing account; set true to auto-create
-            emailRedirectTo: redirect, // MUST be allowed in Supabase Auth → URL Configuration
+            shouldCreateUser: false,
+            emailRedirectTo: redirect,
           },
         });
         if (error) throw error;
-
         setMsg("Magic link sent. Please check your email to complete sign-in.");
       } catch (err: any) {
         setMsg(err?.message ?? "Failed to send magic link. Please try again.");
@@ -64,13 +69,12 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
       return;
     }
 
-    // Otherwise, do normal password login
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (data.session) {
-        redirectAfterAuth();
+        await redirectByProfileRole();
         onClose();
       } else {
         setMsg("Login failed. Please try again.");

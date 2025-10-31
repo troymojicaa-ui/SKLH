@@ -17,7 +17,7 @@ import Mission from "./pages/Mission";
 import PublicProjects from "./pages/PublicProjects";
 import PublicProjectDetail from "./pages/PublicProjectDetail";
 import PublicEvents from "./pages/PublicEvents";
-import MobileHome from "./pages/MobileHome"; // Mobile homepage
+import MobileHome from "./pages/MobileHome";
 
 // Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -26,7 +26,7 @@ import Projects from "./pages/admin/Projects";
 import EditAboutUs from "./pages/admin/EditAboutUs";
 import CalendarPage from "./pages/admin/Calendar";
 import Reports from "./pages/admin/Reports";
-import AdminFacilities from "@/pages/admin/Facilities"; // if present
+import AdminFacilities from "@/pages/admin/Facilities";
 
 // User pages
 import UserDashboard from "./pages/user/UserDashboard";
@@ -34,14 +34,18 @@ import UserProjects from "./pages/user/Projects";
 import UserRAI from "./pages/user/RAI";
 import UserProfile from "./pages/user/Profile";
 import ReportCreate from "./pages/user/ReportCreate";
-import ReportSuccess from "./pages/user/ReportSuccess"; // ✅ NEW confirmation screen
-import ReportDetail from "./pages/user/ReportDetail";   // ✅ NEW per-report page
+import ReportSuccess from "./pages/user/ReportSuccess";
+import ReportDetail from "./pages/user/ReportDetail";
 import Events from "./pages/user/Events";
 import Facilities from "./pages/user/Facilities";
 
 // Auth helpers
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+
+// Route guards
+import ProtectedRoute from "@/routes/ProtectedRoute";
+import AdminRoute from "@/routes/AdminRoute";
 
 const queryClient = new QueryClient();
 
@@ -60,7 +64,6 @@ function AdminLoginRoute() {
   );
 }
 
-/** If a magic-link sends you to /?code=..., hop to /auth/callback with the same query */
 function CodeProxy() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -167,47 +170,44 @@ export default function App() {
       <CodeProxy />
 
       <Routes>
-        {/* Root */}
         <Route path="/" element={<RootRouterGate />} />
 
-        {/* Public */}
         <Route path="/about" element={<AboutUs />} />
         <Route path="/mission" element={<Mission />} />
         <Route path="/projects" element={<PublicProjects />} />
         <Route path="/projects/:id" element={<PublicProjectDetail />} />
         <Route path="/events" element={<PublicEvents />} />
 
-        {/* Auth callback */}
         <Route path="/auth/callback" element={<AuthCallback />} />
 
-        {/* Admin login */}
         <Route path="/admin" element={<AdminLoginRoute />} />
 
-        {/* Admin app */}
-        <Route path="/admin/app" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="youth-database" element={<YouthDatabase />} />
-          <Route path="projects" element={<Projects />} />
-          <Route path="about" element={<EditAboutUs />} />
-          <Route path="calendar" element={<CalendarPage />} />
-          <Route path="facilities" element={<AdminFacilities />} />
+        <Route element={<AdminRoute />}>
+          <Route path="/admin/app" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="youth-database" element={<YouthDatabase />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="about" element={<EditAboutUs />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            <Route path="facilities" element={<AdminFacilities />} />
+          </Route>
         </Route>
 
-        {/* User dashboard */}
-        <Route path="/dashboard" element={<UserLayout />}>
-          <Route index element={<UserDashboard />} />
-          <Route path="events" element={<Events />} />
-          <Route path="projects" element={<UserProjects />} />
-          <Route path="report" element={<UserRAI />} />
-          <Route path="report/new" element={<ReportCreate />} />
-          <Route path="report/success" element={<ReportSuccess />} /> {/* ✅ NEW */}
-          <Route path="report/:id" element={<ReportDetail />} />      {/* ✅ NEW */}
-          <Route path="profile" element={<UserProfile />} />
-          <Route path="facilities" element={<Facilities />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<UserLayout />}>
+            <Route index element={<UserDashboard />} />
+            <Route path="events" element={<Events />} />
+            <Route path="projects" element={<UserProjects />} />
+            <Route path="report" element={<UserRAI />} />
+            <Route path="report/new" element={<ReportCreate />} />
+            <Route path="report/success" element={<ReportSuccess />} />
+            <Route path="report/:id" element={<ReportDetail />} />
+            <Route path="profile" element={<UserProfile />} />
+            <Route path="facilities" element={<Facilities />} />
+          </Route>
         </Route>
 
-        {/* 404 fallback */}
         <Route path="*" element={<Index />} />
       </Routes>
     </QueryClientProvider>

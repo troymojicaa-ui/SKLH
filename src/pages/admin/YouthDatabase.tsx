@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, MoreHorizontal, Loader2, Plus } from "lucide-react";
+import { Search, Loader2, Plus } from "lucide-react";
 
 import {
   Dialog,
@@ -27,20 +27,18 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-// Map
 import { MapContainer, Marker, TileLayer, Popup, useMapEvents } from "react-leaflet";
 import L, { LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/* ---------- Types ---------- */
 type ProfileRow = {
-  id: string; // auth.users.id or generated uuid
+  id: string;
   full_name?: string | null;
   email?: string | null;
   role?: string | null;
   status?: string | null;
   created_at?: string | null;
-  id_no?: string | null; // editable “ID No.”
+  id_no?: string | null;
 };
 
 type AddressRow = {
@@ -53,18 +51,13 @@ type AddressRow = {
   lng: number | null;
 };
 
-/* ---------- Map helpers ---------- */
-const LOYOLA: LatLngExpression = [14.6389, 121.0784]; // Loyola Heights center
+const LOYOLA: LatLngExpression = [14.6389, 121.0784];
 const DEFAULT_ZOOM = 15;
 
-// Default Leaflet marker sprite fix (Vite bundling)
 const DefaultIcon = L.icon({
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
@@ -72,7 +65,6 @@ const DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-/* ---------- Admin address fetch (with lat/lng) ---------- */
 function useAdminAddresses(userIds: string[]) {
   const { session } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -124,15 +116,14 @@ function useAdminAddresses(userIds: string[]) {
         if (!cancelled) setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user.id, JSON.stringify(userIds)]);
 
   const getAddressString = (uid: string) => {
     const a = mapByUser[uid];
-    if (!a) return "—";
+    if (!a) return "–";
     const streetLine = [a.number, a.street].filter(Boolean).join(" ").trim();
     const parts = [streetLine || null, a.barangay, a.city].filter(Boolean);
-    return parts.length ? parts.join(", ") : "—";
+    return parts.length ? parts.join(", ") : "–";
   };
 
   const getLatLng = (uid: string): LatLngExpression | null => {
@@ -144,7 +135,6 @@ function useAdminAddresses(userIds: string[]) {
   return { isAdmin, loading, mapByUser, getAddressString, getLatLng };
 }
 
-/* ---------- Edit modal ---------- */
 type EditModalProps = {
   open: boolean;
   onClose: () => void;
@@ -172,7 +162,6 @@ function EditMemberModal({
     setFullName(profile?.full_name ?? "");
     setStatus((profile?.status ?? "active").toLowerCase());
     setPicked(currentLatLng ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, profile?.id]);
 
   async function handleSave() {
@@ -184,10 +173,7 @@ function EditMemberModal({
         full_name: fullName || null,
         status: status || null,
       };
-      const { error: uErr } = await supabase
-        .from("profiles")
-        .update(patch)
-        .eq("id", profile.id);
+      const { error: uErr } = await supabase.from("profiles").update(patch).eq("id", profile.id);
       if (uErr) throw uErr;
 
       if (picked) {
@@ -209,18 +195,20 @@ function EditMemberModal({
   }
 
   function ClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
-    useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
+    useMapEvents({
+      click(e) {
+        onPick(e.latlng.lat, e.latlng.lng);
+      },
+    });
     return null;
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : null)}>
       <DialogContent key={profile?.id ?? "new"} className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit Member</DialogTitle>
-          <DialogDescription id="edit-desc">
-            Update ID No., name, status and (optionally) pin a location on the map.
-          </DialogDescription>
+          <DialogDescription id="edit-desc">Update ID No., name, status and pin a location.</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 gap-4 mt-2">
@@ -237,8 +225,8 @@ function EditMemberModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Role</Label>
-              <div className="mt-2 text-sm font-medium">{(profile?.role ?? "connect").toLowerCase()}</div>
-              <div className="text-xs text-muted-foreground">Role is managed separately. Users you add here are “connect”.</div>
+              <div className="mt-2 text-sm font-medium">{((profile?.role ?? "connect")[0].toUpperCase() + (profile?.role ?? "connect").slice(1))}</div>
+              <div className="text-xs text-muted-foreground">Role is managed separately.</div>
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
@@ -255,28 +243,38 @@ function EditMemberModal({
             </div>
           </div>
 
-          {/* Map for picking a point */}
           <div className="mt-1 rounded-md overflow-hidden">
             <MapContainer
               center={picked ?? currentLatLng ?? LOYOLA}
               zoom={DEFAULT_ZOOM}
               className="h-64 w-full"
               scrollWheelZoom
+              attributionControl={false}
             >
-              <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <ClickPicker onPick={(la, ln) => setPicked([la, ln])} />
-              {picked && <Marker position={picked}><Popup>Selected address</Popup></Marker>}
+              {picked && (
+                <Marker position={picked}>
+                  <Popup>Selected address</Popup>
+                </Marker>
+              )}
             </MapContainer>
-            <div className="px-3 py-2 text-xs text-muted-foreground">
-              Click on the map to set where this member lives. (Coordinates are saved.)
-            </div>
+            <div className="px-3 py-2 text-xs text-muted-foreground">Click on the map to set where this member lives.</div>
           </div>
         </div>
 
         <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : "Save changes"}
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
+              </>
+            ) : (
+              "Save changes"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -284,7 +282,6 @@ function EditMemberModal({
   );
 }
 
-/* ---------- ADD modal ---------- */
 type AddModalProps = {
   open: boolean;
   onClose: () => void;
@@ -316,7 +313,6 @@ function AddMemberModal({ open, onClose, onAdded }: AddModalProps) {
     }
     setSaving(true);
     try {
-      // Generate a uuid for the profile row (works even if profiles isn't tied to auth.users)
       const newId = crypto.randomUUID();
 
       const { error: pErr } = await supabase.from("profiles").insert({
@@ -347,15 +343,19 @@ function AddMemberModal({ open, onClose, onAdded }: AddModalProps) {
   }
 
   function ClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
-    useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
+    useMapEvents({
+      click(e) {
+        onPick(e.latlng.lat, e.latlng.lng);
+      },
+    });
     return null;
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : null)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Member</DialogTitle>
+          <DialogTitle>Add New Member</DialogTitle>
           <DialogDescription>Fill in details below. Role is set to “connect”.</DialogDescription>
         </DialogHeader>
 
@@ -390,23 +390,32 @@ function AddMemberModal({ open, onClose, onAdded }: AddModalProps) {
             </div>
           </div>
 
-          {/* Map picker */}
           <div className="rounded-md overflow-hidden">
-            <MapContainer center={picked ?? LOYOLA} zoom={DEFAULT_ZOOM} className="h-56 w-full" scrollWheelZoom>
-              <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <MapContainer center={picked ?? LOYOLA} zoom={DEFAULT_ZOOM} className="h-56 w-full" scrollWheelZoom attributionControl={false}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <ClickPicker onPick={(la, ln) => setPicked([la, ln])} />
-              {picked && <Marker position={picked}><Popup>Selected address</Popup></Marker>}
+              {picked && (
+                <Marker position={picked}>
+                  <Popup>Selected address</Popup>
+                </Marker>
+              )}
             </MapContainer>
-            <div className="px-3 py-2 text-xs text-muted-foreground">
-              Optional: click on the map to pin this member’s location.
-            </div>
+            <div className="px-3 py-2 text-xs text-muted-foreground">Optional: click on the map to pin this member’s location.</div>
           </div>
         </div>
 
         <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Button onClick={handleCreate} disabled={saving}>
-            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding…</> : "Add Member"}
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding…
+              </>
+            ) : (
+              "Add Member"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -414,7 +423,6 @@ function AddMemberModal({ open, onClose, onAdded }: AddModalProps) {
   );
 }
 
-/* ---------- Page ---------- */
 const YouthManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -422,16 +430,13 @@ const YouthManagement = () => {
 
   const [members, setMembers] = useState<ProfileRow[]>([]);
 
-  // right map UI state
   const [mapFocus, setMapFocus] = useState<LatLngExpression>(LOYOLA);
   const [hoverUserId, setHoverUserId] = useState<string | null>(null);
   const [clickedUserId, setClickedUserId] = useState<string | null>(null);
 
-  // edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<ProfileRow | null>(null);
 
-  // add modal
   const [addOpen, setAddOpen] = useState(false);
 
   const fetchMembers = async () => {
@@ -452,7 +457,9 @@ const YouthManagement = () => {
     }
   };
 
-  useEffect(() => { fetchMembers(); }, []);
+  useEffect(() => {
+    fetchMembers();
+  }, []);
 
   const userIds = useMemo(() => members.map((m) => m.id), [members]);
   const { isAdmin, getAddressString, getLatLng } = useAdminAddresses(userIds);
@@ -460,11 +467,13 @@ const YouthManagement = () => {
   const totalMembers = members.length;
   const activeMembers = members.filter((m) => (m.status ?? "").toLowerCase() === "active").length;
   const pendingMembers = members.filter((m) => (m.status ?? "").toLowerCase() === "pending").length;
+  const officers = members.filter((m) => (m.role ?? "").toLowerCase() === "admin").length;
 
   const stats = [
-    { label: "Total Members", value: String(totalMembers), color: "bg-blue-500" },
-    { label: "Active Members", value: String(activeMembers), color: "bg-green-500" },
-    { label: "Pending Verification", value: String(pendingMembers), color: "bg-yellow-500" },
+    { label: "Total Members", value: String(totalMembers), color: "bg-[#3B82F6]" },
+    { label: "Active Members", value: String(activeMembers), color: "bg-[#22C55E]" },
+    { label: "Pending Verification", value: String(pendingMembers), color: "bg-[#EAB308]" },
+    { label: "Officers", value: String(officers), color: "bg-[#8B5CF6]" },
   ];
 
   const filteredMembers = useMemo(() => {
@@ -478,7 +487,6 @@ const YouthManagement = () => {
     });
   }, [members, searchTerm]);
 
-  // hover / click → marker + fly-to
   useEffect(() => {
     const uid = hoverUserId ?? clickedUserId;
     if (!uid) return;
@@ -492,38 +500,48 @@ const YouthManagement = () => {
     }
   }, [hoverUserId, clickedUserId, getLatLng]);
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Youth Members</h1>
-          <p className="text-gray-600">Manage all registered youth members</p>
-        </div>
-        {/* no filter button */}
-      </div>
+  const toTitle = (s?: string | null) => {
+    const v = (s ?? "").toLowerCase();
+    return v ? v[0].toUpperCase() + v.slice(1) : "–";
+  };
+  const padId = (id?: string | null) => {
+    if (!id) return "–";
+    const asNum = Number(id);
+    if (!Number.isFinite(asNum)) return id;
+    return String(asNum).padStart(6, "0");
+  };
+  const formatDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "numeric", day: "numeric" }) : "–";
 
-      {/* Layout: left table (2/3) + right sidebar (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* LEFT: Search + Table */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardContent className="pt-6">
-              {/* Toolbar: search + Add Member */}
-              <div className="mb-6 flex items-center justify-between gap-3">
-                <div className="relative flex-1">
+  return (
+    <div className="p-6">
+      <style>{`.leaflet-control-attribution{display:none!important}`}</style>
+
+      <Card className="rounded-xl">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Youth Members</h1>
+              <p className="text-gray-600">Manage all registered youth members</p>
+            </div>
+            <Button className="bg-sky-700 hover:bg-sky-800" onClick={() => setAddOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Member
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="mb-4">
+                <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search by name, email or ID No."
+                    placeholder="Search Name"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
-                <Button className="bg-sky-700 hover:bg-sky-800" onClick={() => setAddOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Member
-                </Button>
               </div>
 
               {err ? (
@@ -540,12 +558,15 @@ const YouthManagement = () => {
                       <TableHead>Role</TableHead>
                       <TableHead>Join Date</TableHead>
                       <TableHead>Address</TableHead>
-                      <TableHead className="w-[80px]">Actions</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredMembers.map((m) => {
                       const latlng = getLatLng(m.id);
+                      const statusLc = (m.status ?? "").toLowerCase();
+                      const badgeVariant =
+                        statusLc === "active" ? "default" : statusLc === "pending" ? "secondary" : "destructive";
                       return (
                         <TableRow
                           key={m.id}
@@ -554,96 +575,96 @@ const YouthManagement = () => {
                           onClick={() => setClickedUserId(m.id)}
                           className="cursor-pointer"
                         >
-                          <TableCell className="font-mono">{m.id_no ?? "—"}</TableCell>
-                          <TableCell className="font-medium">{m.full_name ?? "—"}</TableCell>
+                          <TableCell className="font-mono">{padId(m.id_no)}</TableCell>
+                          <TableCell className="font-medium">{m.full_name ?? "–"}</TableCell>
                           <TableCell>
-                            <Badge
-                              variant={
-                                (m.status ?? "").toLowerCase() === "active"
-                                  ? "default"
-                                  : (m.status ?? "").toLowerCase() === "pending"
-                                  ? "secondary"
-                                  : "destructive"
-                              }
-                            >
-                              {m.status ?? "—"}
-                            </Badge>
+                            <Badge variant={badgeVariant}>{toTitle(m.status)}</Badge>
                           </TableCell>
-                          <TableCell>{(m.role ?? "connect").toLowerCase()}</TableCell>
-                          <TableCell>{m.created_at ? new Date(m.created_at).toLocaleDateString() : "—"}</TableCell>
-                          <TableCell>{isAdmin ? getAddressString(m.id) : "—"}</TableCell>
+                          <TableCell>{toTitle(m.role)}</TableCell>
+                          <TableCell>{formatDate(m.created_at)}</TableCell>
+                          <TableCell>{isAdmin ? getAddressString(m.id) : "–"}</TableCell>
                           <TableCell>
                             <Button
-                              variant="outline"
                               size="sm"
+                              className="bg-sky-700 hover:bg-sky-800 text-white rounded-md"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setEditing(m);
                                 setEditOpen(true);
                               }}
                             >
-                              <MoreHorizontal className="w-4 h-4" />
+                              Edit
                             </Button>
                           </TableCell>
-                          {!latlng && <td className="hidden" title="No pin set for this user" />}
+                          {!latlng && <td className="hidden" />}
                         </TableRow>
                       );
                     })}
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
 
-        {/* RIGHT: Stats + Map */}
-        <div className="lg:col-span-1 space-y-4">
-          {stats.map((s) => (
-            <div key={s.label} className="rounded-lg overflow-hidden ring-1 ring-gray-200 bg-white">
-              <div className={`px-4 py-3 ${s.color} text-white`}>
-                <div className="text-sm">{s.label}</div>
-                <div className="text-2xl font-semibold">{s.value}</div>
+            <div className="lg:col-span-1 space-y-4">
+              {stats.map((s) => (
+                <div key={s.label} className="rounded-xl overflow-hidden shadow-sm">
+                  <div className={`${s.color} text-white px-5 py-4`}>
+                    <div className="text-sm">{s.label}</div>
+                    <div className="text-2xl font-semibold">{s.value}</div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="h-[300px] rounded-xl overflow-hidden shadow-sm ring-1 ring-gray-200">
+                <MapContainer
+                  center={mapFocus}
+                  zoom={DEFAULT_ZOOM}
+                  className="h-full w-full"
+                  scrollWheelZoom
+                  attributionControl={false}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  {(() => {
+                    const uid = hoverUserId ?? clickedUserId;
+                    const pos = uid ? getLatLng(uid) : null;
+                    if (!uid || !pos) return null;
+                    const member = members.find((m) => m.id === uid);
+                    return (
+                      <Marker position={pos}>
+                        <Popup>
+                          <div className="text-sm">
+                            <div className="font-medium">{member?.full_name ?? "Member"}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {isAdmin ? getAddressString(uid) : "–"}
+                            </div>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })()}
+                </MapContainer>
               </div>
             </div>
-          ))}
-
-          <div className="h-[360px] rounded-md overflow-hidden">
-            <MapContainer center={mapFocus} zoom={DEFAULT_ZOOM} className="h-full w-full" scrollWheelZoom>
-              <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {(() => {
-                const uid = hoverUserId ?? clickedUserId;
-                const pos = uid ? getLatLng(uid) : null;
-                if (!uid || !pos) return null;
-                const member = members.find((m) => m.id === uid);
-                return (
-                  <Marker position={pos}>
-                    <Popup>
-                      <div className="text-sm">
-                        <div className="font-medium">{member?.full_name ?? "Member"}</div>
-                        <div className="text-xs text-muted-foreground">{isAdmin ? getAddressString(uid) : "—"}</div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })()}
-            </MapContainer>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Modals */}
       <EditMemberModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         profile={editing}
         currentLatLng={editing ? getLatLng(editing.id) : null}
-        onSaved={() => { fetchMembers(); }}
+        onSaved={() => {
+          fetchMembers();
+        }}
       />
 
       <AddMemberModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onAdded={() => { fetchMembers(); }}
+        onAdded={() => {
+          fetchMembers();
+        }}
       />
     </div>
   );
