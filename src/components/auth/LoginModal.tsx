@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserCircle, Shield } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/context/AuthProvider";
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -13,6 +15,9 @@ interface LoginModalProps {
 }
 
 const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
+  const navigate = useNavigate();
+  const { session, role: profileRole } = useAuth(); // live auth state
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 

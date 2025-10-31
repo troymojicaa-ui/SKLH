@@ -10,7 +10,11 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L, { LatLngExpression, Map as LeafletMap } from "leaflet";
-import { X, ChevronDown, ChevronUp } from "lucide-react";
+import { format } from "date-fns";
+import { CheckCircle2, Check, MapPin, X, CalendarClock, ChevronDown, ChevronUp } from "lucide-react";
+import MapView from "./components/Mapview";
+import MarkerPins from "./components/MarkerPins";
+import FitBounds from "./components/FitBounds";
 
 type ReportStatus = "pending" | "reviewed" | "resolved";
 
@@ -53,6 +57,61 @@ function statusFill(s: ReportStatus) {
   return DARK_BLUE;
 }
 
+function FlyTo({ center }: { center: LatLngExpression | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) map.flyTo(center, DEFAULT_ZOOM, { duration: 0.4 });
+  }, [center, map]);
+  return null;
+}
+
+function StatusPill({ status }: { status: ReportStatus }) {
+  const style =
+    status === "pending"
+      ? "bg-blue-100 text-blue-700"
+      : status === "reviewed"
+      ? "bg-amber-100 text-amber-700"
+      : "bg-green-100 text-green-700";
+  return (
+    <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${style}`}>
+      {STATUS_UI_LABEL[status]}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: ReportStatus }) {
+  const style =
+    status === "pending"
+      ? "bg-blue-100 text-blue-700"
+      : status === "reviewed"
+      ? "bg-amber-100 text-amber-700"
+      : "bg-green-100 text-green-700";
+  return <span className={`px-2 py-0.5 rounded text-[11px] ${style}`}>{STATUS_UI_LABEL[status]}</span>;
+}
+
+/** Status editor for a single report (no "all" option here) */
+function StatusSelect({
+  value,
+  onChange,
+}: {
+  value: ReportStatus;
+  onChange: (v: ReportStatus) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as ReportStatus)}>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="bg-white border shadow-md">
+        <SelectItem value="pending">Pending</SelectItem>
+        <SelectItem value="reviewed">In Progress</SelectItem>
+        <SelectItem value="resolved">Resolved</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+/* ---------- Reverse-geocode helper (UI-only backfill) ---------- */
 async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   const base = import.meta.env.VITE_SUPABASE_URL;
   const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;

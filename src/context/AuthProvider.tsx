@@ -1,5 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+// src/context/AuthProvider.tsx
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import type { Session, User } from "@supabase/supabase-js";
 
 type Session = Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'];
 type Role = 'admin' | 'user';
@@ -37,6 +39,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<Role>("user");
+
+  const pollTimer = useRef<number | null>(null);
+  const bound = useRef(false);
 
   const load = async () => {
     setLoading(true);
