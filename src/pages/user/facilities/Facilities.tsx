@@ -1,9 +1,8 @@
-// src/pages/user/facilities/Facilities.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
-import { MapPin, Clock, ChevronLeft, ChevronRight, X, Building2 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { MapPin, Clock, Building2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export type Facility = {
   id: string;
@@ -11,13 +10,12 @@ export type Facility = {
   description: string | null;
   facility_photos?: { url: string | null; sort_order: number | null }[];
   facility_hours?: { dow: number; open_time: string | null; close_time: string | null }[];
-  facility_address: {address: string, lat: number, lng: number}
+  facility_address: { address: string; lat: number; lng: number };
 };
 
 type HoursDay = { open?: string | null; close?: string | null; closed?: boolean | null };
 type Hours = Partial<Record<"sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat", HoursDay>>;
 const DAY_KEYS: Array<keyof Hours> = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function buildHoursFromRows(rows: Facility["facility_hours"] | undefined): Hours | null {
   if (!rows || rows.length === 0) return null;
@@ -31,10 +29,12 @@ function buildHoursFromRows(rows: Facility["facility_hours"] | undefined): Hours
   }
   return out;
 }
+
 function hasAnyHours(h?: Hours | null) {
   if (!h) return false;
   return Object.values(h).some((d) => d && (d.closed === false || (!!d.open && !!d.close)));
 }
+
 function photosFrom(f?: Facility): string[] {
   const arr = (f?.facility_photos ?? [])
     .slice()
@@ -44,15 +44,12 @@ function photosFrom(f?: Facility): string[] {
   return Array.from(new Set(arr));
 }
 
-
-
-/* ---------- Page ---------- */
 export default function Facilities() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   async function load() {
     setLoading(true);
@@ -65,10 +62,11 @@ export default function Facilities() {
           id, name, description,
           facility_photos:facility_photos(url, sort_order),
           facility_hours:facility_hours(dow, open_time, close_time),
-					facility_address:facility_addresses(address, lat, lng)
+          facility_address:facility_addresses(address, lat, lng)
         `
         )
         .order("name", { ascending: true });
+
       if (error) throw error;
       setFacilities((data ?? []) as Facility[]);
     } catch (e: any) {
@@ -95,6 +93,7 @@ export default function Facilities() {
       .channel("rt-facility-hours")
       .on("postgres_changes", { event: "*", schema: "public", table: "facility_hours" }, load)
       .subscribe();
+
     return () => {
       supabase.removeChannel(ch1);
       supabase.removeChannel(ch2);
@@ -104,11 +103,7 @@ export default function Facilities() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">
-      <NavLink to={"/dashboard"} className="flex items-center py-2" >
-        <ChevronLeft className="pl-0 h-6 w-6" /> Back to Home
-      </NavLink>
-
-      <h1 className="text-2xl font-semibold mb-4 flex justify-center">Facilities</h1>
+      <h1 className="text-2xl font-semibold mb-4 text-center">Facilities</h1>
 
       {loading ? (
         <Card className="p-4 text-sm text-slate-600">Loading…</Card>
@@ -128,8 +123,7 @@ export default function Facilities() {
               <Card
                 key={f.id}
                 className="overflow-hidden hover:shadow transition cursor-pointer"
-                // onClick={() => setActive(f)}
-                onClick={()=> navigate(`/dashboard/facilities/${f.id}`)}
+                onClick={() => navigate(`/dashboard/facilities/${f.id}`)}
               >
                 <div className="relative h-40 bg-slate-100 overflow-hidden">
                   {cover ? (

@@ -1,5 +1,5 @@
 // src/pages/user/Events.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,10 @@ type UIEvent = {
 
 type RegistrationMap = Record<
   string,
-  { status: "pending" | "approved" | "declined"; id: string } | undefined
+  { status: "pending" | "approved" | "denied"; id: string } | undefined
 >;
 
-const HEADER_BLUE = "#0C4A6E";
+const HEADER_BLUE = "#0C4A6E"; // match your header color if different
 
 function coalesce<T>(...vals: (T | undefined | null | "")[]) {
   for (const v of vals) if (v !== undefined && v !== null && v !== "") return v as T;
@@ -43,9 +43,6 @@ function joinDateTime(dateStr?: string, timeStr?: string): string | undefined {
 }
 
 function mapProjectRow(row: any): UIEvent | null {
-  // Require a real projects.id (to satisfy FK)
-  if (!row?.id) return null;
-
   const startISO =
     coalesce<string>(
       row.starts_at,
@@ -82,9 +79,12 @@ function mapProjectRow(row: any): UIEvent | null {
   const rawMode = (coalesce<string>(row.mode, row.type, row.format, row.project_type) ?? "")
     .toString()
     .toLowerCase();
-  const mode: UIEvent["mode"] | undefined =
-    rawMode.includes("online") ? "online" :
-    (rawMode.includes("person") || rawMode.includes("onsite")) ? "in-person" : undefined;
+
+  const mode: UIEvent["mode"] | undefined = rawMode.includes("online")
+    ? "online"
+    : rawMode.includes("person") || rawMode.includes("onsite")
+    ? "in-person"
+    : undefined;
 
   let speakers: string[] | undefined;
   if (Array.isArray(row.speakers)) speakers = row.speakers;
@@ -105,7 +105,7 @@ function mapProjectRow(row: any): UIEvent | null {
     ) ?? null;
 
   return {
-    id: String(row.id), // <-- strictly use projects.id
+    id: String(coalesce(row.id, row.uuid, row.slug, Math.random().toString(36).slice(2))),
     title: String(coalesce(row.title, row.name, row.project_title, "Untitled")),
     startISO,
     endISO,
@@ -117,15 +117,19 @@ function mapProjectRow(row: any): UIEvent | null {
   };
 }
 
+function isEventEnded(ev: UIEvent, now = new Date()) {
+  const start = new Date(ev.startISO);
+  const end = ev.endISO ? new Date(ev.endISO) : null;
+  return now.getTime() > (end ? end.getTime() : start.getTime());
+}
+
 export default function Events() {
   const [events, setEvents] = useState<UIEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
   const [userId, setUserId] = useState<string | null>(null);
   const [regs, setRegs] = useState<RegistrationMap>({});
-  const [form, setForm] = useState<Record<string, { first: string; last: string; idnum: string }>>(
-    {}
-  );
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -138,6 +142,7 @@ export default function Events() {
   async function fetchProjects() {
     setLoading(true);
     setErr(null);
+
     const { data, error } = await supabase.from("projects").select("*");
     if (error) {
       setErr(error.message);
@@ -154,6 +159,7 @@ export default function Events() {
       const end = e.endISO ? new Date(e.endISO) : null;
       return start >= today || (end && end >= today);
     });
+
     const sorter = (a: UIEvent, b: UIEvent) => +new Date(a.startISO) - +new Date(b.startISO);
     setEvents((upcoming.length > 0 ? upcoming : mapped).sort(sorter));
     setLoading(false);
@@ -161,13 +167,10 @@ export default function Events() {
 
   useEffect(() => {
     fetchProjects();
+
     const channel = supabase
       .channel("projects-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "projects" },
-        () => fetchProjects()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, () => fetchProjects())
       .subscribe();
 
     return () => {
@@ -185,68 +188,51 @@ export default function Events() {
   useEffect(() => {
     (async () => {
       if (!userId || events.length === 0) return;
+
       const ids = events.map((e) => e.id);
       const { data, error } = await supabase
-        .from("event_registrations")
-        .select("id, event_id, status")
-        .in("event_id", ids)
+        .from("project_registrations")
+        .select("id, project_id, status")
+        .in("project_id", ids)
         .eq("user_id", userId);
 
       if (!error && data) {
         const map: RegistrationMap = {};
-        for (const r of data)
-          map[String((r as any).event_id)] = {
-            id: (r as any).id,
-            status: (r as any).status,
-          };
+        for (const r of data) map[String(r.project_id)] = { id: r.id, status: r.status };
         setRegs(map);
       }
     })();
   }, [userId, events]);
 
-  async function handleRegister(eventId: string) {
+  async function handleRegister(projectId: string) {
     if (!userId) {
       alert("Please log in first to register.");
       return;
     }
 
-    setSubmitting((s) => ({ ...s, [eventId]: true }));
+    setSubmitting((s) => ({ ...s, [projectId]: true }));
 
-    try {
-      // Already registered?
-      const { data: existing, error: checkErr } = await supabase
-        .from("event_registrations")
-        .select("id, status")
-        .eq("event_id", eventId)
-        .eq("user_id", userId)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from("project_registrations")
+      .upsert(
+        { project_id: projectId, user_id: userId, status: "pending" as const },
+        { onConflict: "project_id,user_id" }
+      )
+      .select("id,status")
+      .single();
 
-      if (checkErr) throw checkErr;
+    setSubmitting((s) => ({ ...s, [projectId]: false }));
 
-      if (existing) {
-        setRegs((r) => ({ ...r, [eventId]: { id: existing.id, status: existing.status } }));
-      } else {
-        // Insert minimal valid columns; defaults/RLS handle the rest
-        const { data: inserted, error: insErr } = await supabase
-          .from("event_registrations")
-          .insert({ event_id: eventId, user_id: userId }) // status/created_at/updated_at via defaults
-          .select("id, status")
-          .single();
-
-        if (insErr) throw insErr;
-
-        setRegs((r) => ({
-          ...r,
-          [eventId]: { id: (inserted as any).id, status: (inserted as any).status },
-        }));
-      }
-    } catch (e: any) {
-      console.error("Registration insert failed:", e?.message ?? e);
+    if (error) {
+      console.error(error);
       alert("Registration failed. Please try again.");
-    } finally {
-      setSubmitting((s) => ({ ...s, [eventId]: false }));
+      return;
     }
+
+    setRegs((r) => ({ ...r, [projectId]: { id: data!.id, status: data!.status } }));
   }
+
+  const now = useMemo(() => new Date(), [events.length, loading, err]);
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
@@ -266,6 +252,8 @@ export default function Events() {
           {events.map((ev) => {
             const reg = regs[ev.id];
             const applied = !!reg;
+            const ended = isEventEnded(ev, now);
+
             return (
               <Card key={ev.id} className="p-4 shadow-sm rounded-xl border">
                 {ev.mode && (
@@ -316,67 +304,33 @@ export default function Events() {
                 >
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold">Register for this event</h3>
-                    {applied && (
-                      <span className="inline-flex items-center gap-1 text-xs bg:white/10 px-2 py-1 rounded">
+
+                    {/* Only show pill for applied status */}
+                    {applied ? (
+                      <span className="inline-flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {reg!.status === "approved"
                           ? "Approved"
-                          : reg!.status === "declined"
-                          ? "Declined"
+                          : reg!.status === "denied"
+                          ? "Denied"
                           : "Applied (pending)"}
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {!applied ? (
-                    <div className="mt-3 space-y-2">
-                      <Input
-                        placeholder="First name (optional)"
-                        value={form[ev.id]?.first ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            [ev.id]: { ...(f[ev.id] ?? { last: "", idnum: "" }), first: e.target.value },
-                          }))
-                        }
-                        className="bg-white text-black placeholder:text-gray-500"
-                      />
-                      <Input
-                        placeholder="Last name (optional)"
-                        value={form[ev.id]?.last ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            [ev.id]: { ...(f[ev.id] ?? { first: "", idnum: "" }), last: e.target.value },
-                          }))
-                        }
-                        className="bg:white text-black placeholder:text-gray-500"
-                      />
-                      <Input
-                        placeholder="ID Number (optional)"
-                        value={form[ev.id]?.idnum ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            [ev.id]: { ...(f[ev.id] ?? { first: "", last: "" }), idnum: e.target.value },
-                          }))
-                        }
-                        className="bg:white text-black placeholder:text-gray-500"
-                      />
-
-                      <Button
-                        type="button"
-                        onClick={() => handleRegister(ev.id)}
-                        disabled={submitting[ev.id]}
-                        className="w-full bg-white hover:bg-white/90"
-                        style={{ color: HEADER_BLUE }}
-                      >
-                        {submitting[ev.id] ? "Saving…" : "Save my spot"}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => handleRegister(ev.id)}
+                      disabled={ended || !!submitting[ev.id]}
+                      className="w-full mt-3 bg-white hover:bg-white/90 disabled:opacity-60"
+                      style={{ color: HEADER_BLUE }}
+                    >
+                      {ended ? "Event ended" : submitting[ev.id] ? "Saving…" : "Save my spot"}
+                    </Button>
                   ) : (
                     <p className="mt-3 text-sm text-white/80">
-                      You’ve applied for this event. Status:{" "}
+                      You’ve registered for this event. Status:{" "}
                       <span className="font-semibold capitalize">{reg!.status}</span>.
                     </p>
                   )}

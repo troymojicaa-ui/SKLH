@@ -1,6 +1,10 @@
-// src/components/layout/UserLayout.tsx
 import { useEffect, useRef, useState } from "react";
-import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import {
+  Outlet,
+  NavLink,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Home,
@@ -11,25 +15,22 @@ import {
   Menu,
   CalendarDays,
   Building2,
+  ChevronLeft,
 } from "lucide-react";
-import { useAuth } from "@/context/AuthProvider";
+import { supabase } from "@/lib/supabaseClient";
 import circleLogo from "@/assets/circle logo.png";
 
 const UserLayout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut, loading, session } = useAuth();
 
-  // 🔒 Guard: wait for loading; if no session, send to home with ?next=
-  useEffect(() => {
-    if (loading) return;
-    if (!session) {
-      navigate(`/?next=${encodeURIComponent(location.pathname)}`, { replace: true });
-    }
-  }, [loading, session, navigate, location.pathname]);
+  const isHome = location.pathname === "/dashboard";
+  const isRAI = location.pathname.startsWith("/dashboard/report");
 
+  // Close mobile dropdown when clicking outside
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!menuRef.current) return;
@@ -46,6 +47,14 @@ const UserLayout = () => {
     { name: "Reports", href: "/dashboard/report", icon: ShieldAlert },
     { name: "Profile", href: "/dashboard/profile", icon: UserIcon },
   ];
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      window.location.href = "/";
+    }
+  };
 
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
@@ -66,7 +75,7 @@ const UserLayout = () => {
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
               }`
             }
-            onClick={() => setMenuOpen(false)}
+            onClick={() => setSidebarOpen(false)}
           >
             <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
             {item.name}
@@ -75,7 +84,11 @@ const UserLayout = () => {
       </nav>
 
       <div className="border-t p-4">
-        <Button onClick={signOut} variant="outline" className="w-full justify-start">
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          className="w-full justify-start"
+        >
           <LogOut className="mr-3 h-4 w-4" />
           Logout
         </Button>
@@ -83,36 +96,15 @@ const UserLayout = () => {
     </div>
   );
 
-  // While auth is resolving and before we know if there's a session, show a tiny header bar
-  if (loading) {
-    return (
-      <div className="min-h-dvh bg-gray-50">
-        <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-sky-900 px-4 py-3 md:hidden">
-          <img src={circleLogo} alt="SK Logo" className="h-8 w-8 rounded-full object-cover" />
-          <div className="text-white text-sm">Checking session…</div>
-        </div>
-        <div className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
-          <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white" />
-        </div>
-        <div className="md:pl-64 flex flex-col min-h-dvh">
-          <main className="flex-1 p-4 pt-14 md:pt-4 overflow-auto">
-            <div className="text-sm text-gray-600">
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border border-gray-300 border-t-transparent mr-2" />
-              Loading…
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-
-  // If no session, the effect above will navigate; render nothing briefly.
-  if (!session) return null;
-
   return (
-    <div className="min-h-dvh bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-sky-900 px-4 py-3 md:hidden">
-        <img src={circleLogo} alt="SK Logo" className="h-8 w-8 rounded-full object-cover" />
+        <img
+          src={circleLogo}
+          alt="SK Logo"
+          className="h-8 w-8 rounded-full object-cover"
+        />
 
         <div className="relative" ref={menuRef}>
           <Button
@@ -192,9 +184,10 @@ const UserLayout = () => {
               </button>
 
               <div className="mt-2 border-t border-sky-800" />
+
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
-                onClick={signOut}
+                onClick={handleLogout}
               >
                 <LogOut className="h-5 w-5" />
                 Log out
@@ -204,15 +197,34 @@ const UserLayout = () => {
         </div>
       </div>
 
+      {/* Desktop sidebar */}
       <div className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
         <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
           <SidebarContent />
         </div>
       </div>
 
-      <div className="md:pl-64 flex flex-col min-h-dvh">
-        <main className="flex-1 p-4 pt-14 md:pt-4 overflow-auto">
-          <Outlet />
+      {/* Main content */}
+      <div className="md:pl-64 flex flex-col flex-1">
+        <main className="flex-1">
+          <div className="pt-14 md:pt-0 md:mx-auto md:w-full md:max-w-md md:p-4">
+            {/* Back to Home bar (NOT on home, NOT on RAI) */}
+            {!isHome && !isRAI && (
+              <div className="sticky top-[56px] md:top-0 z-20 bg-white/95 backdrop-blur border-b">
+                <div className="px-4 py-3">
+                  <button
+                    onClick={() => navigate("/dashboard")}
+                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back to Home
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
