@@ -81,3 +81,16 @@ button:hover { border-color: #646cff; }
 .body--menu-open .leaflet-container {
   pointer-events: none;
 }
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:visited {
+  color: inherit;
+}
+
+a:hover {
+  color: inherit;
+}
