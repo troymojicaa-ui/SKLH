@@ -1,5 +1,5 @@
 // src/pages/user/ConnectLogin.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthProvider";
@@ -19,13 +19,16 @@ export default function ConnectLogin() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || "/dashboard";
 
-  // If already logged in, redirect immediately
-  if (session) {
-    navigate(from, { replace: true });
-    return null;
-  }
+  // ✅ IMPORTANT: default to a Connect route (NOT /dashboard unless that's truly your Connect home)
+  const from = (location.state as any)?.from?.pathname || "/connect";
+
+  // ✅ Redirect in an effect (do NOT navigate during render)
+  useEffect(() => {
+    if (session) {
+      navigate(from, { replace: true });
+    }
+  }, [session, from, navigate]);
 
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,22 +43,28 @@ export default function ConnectLogin() {
 
       if (password) {
         // Email + password login
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        if (data.session) {
-          navigate(from, { replace: true });
-        }
+
+        // ✅ Don't rely on data.session being immediately set; your auth listener/guard will handle it
+        navigate(from, { replace: true });
       } else {
         // Magic link login
-        const { error } = await supabase.auth.signInWithOtp({ email });
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            // optional but recommended if you have a specific callback route:
+            // emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
         if (error) throw error;
         setMsg("Magic link sent! Check your email to finish logging in.");
       }
     } catch (err: any) {
-      setMsg(err.message ?? "Something went wrong.");
+      setMsg(err?.message ?? "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -65,11 +74,15 @@ export default function ConnectLogin() {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
+        options: {
+          // optional but recommended if you have a callback route:
+          // redirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (error) throw error;
       // Supabase will redirect back after Google login
     } catch (err: any) {
-      alert(err.message ?? "Google login failed");
+      alert(err?.message ?? "Google login failed");
     }
   };
 

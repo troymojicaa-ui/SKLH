@@ -6,7 +6,6 @@ import {
   deleteTeamMember,
   deleteTimelineItem,
   type AboutUsDTO,
-  type CTA,
   type MemberDTO,
   type TimelineItemDTO,
 } from "@/services/aboutUs";
@@ -24,9 +23,164 @@ const readAsDataURL = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+function CropImageModal({
+  open,
+  src,
+  aspect,
+  onClose,
+  onDone,
+  outputWidth = 1600,
+}: {
+  open: boolean;
+  src: string | null;
+  aspect: number;
+  onClose: () => void;
+  onDone: (dataUrl: string) => void;
+  outputWidth?: number;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setDragging] = useState(false);
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setScale(1);
+      setPos({ x: 0, y: 0 });
+    }
+  }, [open]);
+
+  if (!open || !src) return null;
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    setDragging(true);
+    setStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!isDragging || !start) return;
+    setPos({ x: e.clientX - start.x, y: e.clientY - start.y });
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    setDragging(false);
+    setStart(null);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+
+  const doCrop = () => {
+    if (!containerRef.current || !imgRef.current) return;
+
+    const frame = containerRef.current.getBoundingClientRect();
+    const iw = imgRef.current.naturalWidth;
+    const ih = imgRef.current.naturalHeight;
+
+    const renderWidth = iw * scale;
+    const renderHeight = ih * scale;
+
+    const imgLeft = pos.x + frame.width / 2 - renderWidth / 2;
+    const imgTop = pos.y + frame.height / 2 - renderHeight / 2;
+
+    const outW = outputWidth;
+    const outH = Math.round(outW / aspect);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const sx = ((0 - imgLeft) / renderWidth) * iw;
+    const sy = ((0 - imgTop) / renderHeight) * ih;
+    const sWidth = (frame.width / renderWidth) * iw;
+    const sHeight = (frame.height / renderHeight) * ih;
+
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.drawImage(imgRef.current, sx, sy, sWidth, sHeight, 0, 0, outW, outH);
+    onDone(canvas.toDataURL("image/jpeg", 0.92));
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="px-1 pb-2 text-lg font-semibold">Adjust image</h3>
+
+        <div
+          ref={containerRef}
+          className="relative mx-auto mb-4 overflow-hidden rounded-lg bg-black/5"
+          style={{ width: "100%", aspectRatio: String(aspect) }}
+        >
+          <img
+            ref={imgRef}
+            src={src}
+            alt="crop"
+            className="select-none"
+            draggable={false}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
+              transformOrigin: "center center",
+              userSelect: "none",
+              willChange: "transform",
+            }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          />
+          <div className="pointer-events-none absolute inset-0 rounded-lg ring-2 ring-slate-300" />
+        </div>
+
+        <div className="flex items-center gap-4 px-1">
+          <label className="text-sm font-medium text-slate-700">Zoom</label>
+          <input
+            type="range"
+            min={0.5}
+            max={3}
+            step={0.01}
+            value={scale}
+            onChange={(e) => setScale(parseFloat(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2 px-1">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={doCrop}
+            className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EditAboutUs() {
   const [data, setData] = useState<AboutUsDTO | null>(null);
   const [loading, setLoading] = useState(true);
+
   const [editing, setEditing] = useState<Record<number, boolean>>({});
   const [newMember, setNewMember] = useState<MemberDTO>({
     name: "",
@@ -36,9 +190,18 @@ export default function EditAboutUs() {
     sortOrder: 0,
   });
 
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
   const heroInputRef = useRef<HTMLInputElement>(null);
   const aboutSideInputRef = useRef<HTMLInputElement>(null);
+  const newAvatarRef = useRef<HTMLInputElement>(null);
   const avatarInputs = useRef<Record<number, HTMLInputElement | null>>({});
+
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropAspect, setCropAspect] = useState(16 / 9);
+  const cropTargetRef = useRef<"hero" | "about">("hero");
 
   useEffect(() => {
     (async () => {
@@ -74,19 +237,13 @@ export default function EditAboutUs() {
         })),
       });
       setLoading(false);
-    })().catch((e) => {
-      console.error(e);
-      setLoading(false);
-    });
+    })().catch(() => setLoading(false));
   }, []);
 
   if (loading || !data) return <div className="p-6">Loading…</div>;
 
   const setField = <K extends keyof AboutUsDTO>(key: K, val: AboutUsDTO[K]) =>
     setData((d) => (d ? { ...d, [key]: val } : d));
-
-  const setCTA = <K extends keyof CTA>(key: K, val: CTA[K]) =>
-    setData((d) => (d ? { ...d, cta: { ...d.cta, [key]: val } } : d));
 
   const setTeamAt = <K extends keyof MemberDTO>(idx: number, key: K, val: MemberDTO[K]) =>
     setData((d) =>
@@ -119,10 +276,7 @@ export default function EditAboutUs() {
       d
         ? {
             ...d,
-            team: [
-              ...d.team,
-              { ...newMember, sortOrder: d.team.length },
-            ],
+            team: [...d.team, { ...newMember, sortOrder: d.team.length }],
           }
         : d
     );
@@ -157,7 +311,14 @@ export default function EditAboutUs() {
             ...d,
             timeline: [
               ...d.timeline,
-              { date: "", title: "", description: "", buttonLabel: "", buttonUrl: "", sortOrder: d.timeline.length },
+              {
+                date: "",
+                title: "",
+                description: "",
+                buttonLabel: "",
+                buttonUrl: "",
+                sortOrder: d.timeline.length,
+              },
             ],
           }
         : d
@@ -186,16 +347,35 @@ export default function EditAboutUs() {
       return { ...d, timeline: a.map((x, i) => ({ ...x, sortOrder: i })) };
     });
 
+  const openCropper = async (
+    file: File,
+    target: "hero" | "about",
+    aspect: number,
+    _outWidth: number
+  ) => {
+    const url = await readAsDataURL(file);
+    cropTargetRef.current = target;
+    setCropAspect(aspect);
+    setCropSrc(url);
+    setCropOpen(true);
+  };
+
+  const onCropDone = (dataUrl: string) => {
+    if (cropTargetRef.current === "hero") {
+      setField("heroImage", dataUrl);
+    } else {
+      setField("whyWeMadeThisImage", dataUrl);
+    }
+  };
+
   const onChangeHero = async (f?: File | null) => {
     if (!f) return;
-    const url = await readAsDataURL(f);
-    setField("heroImage", url);
+    openCropper(f, "hero", 3.5, 1920);
   };
 
   const onChangeAboutSide = async (f?: File | null) => {
     if (!f) return;
-    const url = await readAsDataURL(f);
-    setField("whyWeMadeThisImage", url);
+    openCropper(f, "about", 16 / 9, 1600);
   };
 
   const onChangeAvatar = async (idx: number, f?: File | null) => {
@@ -204,19 +384,35 @@ export default function EditAboutUs() {
     setTeamAt(idx, "avatarUrl", url);
   };
 
+  const onChangeNewAvatar = async (f?: File | null) => {
+    if (!f) return;
+    const url = await readAsDataURL(f);
+    setNewMember((s) => ({ ...s, avatarUrl: url }));
+  };
+
   const handleSaveAll = async () => {
-    await saveAboutUs(data);
-    const fresh = await fetchAboutUs();
-    setData({
-      heroImage: fresh.heroImage ?? null,
-      whyWeMadeText: fresh.whyWeMadeText ?? "",
-      missionText: fresh.missionText ?? "",
-      whyWeMadeThisImage: fresh.whyWeMadeThisImage ?? null,
-      team: (fresh.team ?? []).map((m, i) => ({ ...m, sortOrder: m.sortOrder ?? i })),
-      cta: fresh.cta,
-      timeline: (fresh.timeline ?? []).map((t, i) => ({ ...t, sortOrder: t.sortOrder ?? i })),
-    });
-    alert("Saved!");
+    try {
+      setSaving(true);
+      setSaveErr(null);
+      await saveAboutUs(data);
+      const fresh = await fetchAboutUs();
+      setData({
+        heroImage: fresh.heroImage ?? null,
+        whyWeMadeText: fresh.whyWeMadeText ?? "",
+        missionText: fresh.missionText ?? "",
+        whyWeMadeThisImage: fresh.whyWeMadeThisImage ?? null,
+        team: (fresh.team ?? []).map((m, i) => ({ ...m, sortOrder: m.sortOrder ?? i })),
+        cta: fresh.cta,
+        timeline: (fresh.timeline ?? []).map((t, i) => ({ ...t, sortOrder: t.sortOrder ?? i })),
+      });
+      alert("Saved!");
+    } catch (e: any) {
+      console.error(e);
+      setSaveErr(e?.message ?? "Save failed");
+      alert(`Save failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -269,7 +465,10 @@ export default function EditAboutUs() {
                   </button>
                 </>
               ) : (
-                <button onClick={() => aboutSideInputRef.current?.click()} className="flex flex-col items-center">
+                <button
+                  onClick={() => aboutSideInputRef.current?.click()}
+                  className="flex flex-col items-center"
+                >
                   <ImagePlus className="mb-3 h-10 w-10 text-slate-500" />
                   <span className="text-sm text-slate-700">Add Image</span>
                 </button>
@@ -294,7 +493,11 @@ export default function EditAboutUs() {
           >
             {data.heroImage ? (
               <>
-                <img src={data.heroImage} alt="Hero" className="h-full w-full rounded-xl object-cover" />
+                <img
+                  src={data.heroImage}
+                  alt="Hero"
+                  className="h-full w-full rounded-xl object-cover"
+                />
                 <button
                   onClick={() => heroInputRef.current?.click()}
                   className="absolute bottom-3 right-3 rounded-lg bg-white/90 px-3 py-1.5 text-sm shadow"
@@ -303,7 +506,10 @@ export default function EditAboutUs() {
                 </button>
               </>
             ) : (
-              <button onClick={() => heroInputRef.current?.click()} className="flex flex-col items-center">
+              <button
+                onClick={() => heroInputRef.current?.click()}
+                className="flex flex-col items-center"
+              >
                 <ImagePlus className="mb-3 h-10 w-10 text-slate-500" />
                 <span className="text-sm text-slate-700">Add Image</span>
               </button>
@@ -343,7 +549,6 @@ export default function EditAboutUs() {
                       className="hidden"
                       onChange={async (e) => onChangeAvatar(idx, e.target.files?.[0] ?? null)}
                     />
-                    {/* Curved bottom overlay button */}
                     <button
                       onClick={() => avatarInputs.current[idx]?.click()}
                       aria-label="Change photo"
@@ -431,8 +636,29 @@ export default function EditAboutUs() {
 
           <div className={cardCls}>
             <div className="mb-5 flex items-center justify-center">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full border border-dashed border-gray-300 bg-gray-50">
-                <ImagePlus className="h-7 w-7 text-gray-500" />
+              <div
+                className="relative h-24 w-24 overflow-hidden rounded-full border border-dashed border-gray-300 bg-gray-50"
+                onClick={() => newAvatarRef.current?.click()}
+                role="button"
+              >
+                {newMember.avatarUrl ? (
+                  <img
+                    src={newMember.avatarUrl}
+                    alt="new member avatar"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImagePlus className="h-7 w-7 text-gray-500" />
+                  </div>
+                )}
+                <input
+                  ref={newAvatarRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => onChangeNewAvatar(e.target.files?.[0] ?? null)}
+                />
               </div>
             </div>
 
@@ -471,72 +697,19 @@ export default function EditAboutUs() {
 
             <div className="mt-5 flex gap-2">
               <button
-                onClick={() => setNewMember({ name: "", role: "", bio: "", avatarUrl: "", sortOrder: 0 })}
+                onClick={() =>
+                  setNewMember({ name: "", role: "", bio: "", avatarUrl: "", sortOrder: 0 })
+                }
                 className="flex-1 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-slate-600"
               >
                 Cancel
               </button>
-              <button onClick={addMember} className="flex-1 rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900">
+              <button
+                onClick={addMember}
+                className="flex-1 rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900"
+              >
                 Add Member
               </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-12">
-        <h2 className="mb-4 text-xl font-semibold">CTA Band</h2>
-        <div className={cardCls}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className={labelCls}>Tagline</label>
-              <input
-                className={fieldCls}
-                value={data.cta.tagline}
-                onChange={(e) => setCTA("tagline", e.target.value)}
-                placeholder="Tagline"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Heading</label>
-              <input
-                className={fieldCls}
-                value={data.cta.heading}
-                onChange={(e) => setCTA("heading", e.target.value)}
-                placeholder="Medium length section heading"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <label className={labelCls}>Text</label>
-            <textarea
-              rows={3}
-              className={`${fieldCls} resize-none`}
-              value={data.cta.text}
-              onChange={(e) => setCTA("text", e.target.value)}
-              placeholder="Supporting paragraph"
-            />
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div>
-              <label className={labelCls}>Button Label</label>
-              <input
-                className={fieldCls}
-                value={data.cta.buttonLabel}
-                onChange={(e) => setCTA("buttonLabel", e.target.value)}
-                placeholder="Button"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Button URL</label>
-              <input
-                className={fieldCls}
-                value={data.cta.buttonUrl}
-                onChange={(e) => setCTA("buttonUrl", e.target.value)}
-                placeholder="https://example.com"
-              />
             </div>
           </div>
         </div>
@@ -634,14 +807,24 @@ export default function EditAboutUs() {
         </div>
       </section>
 
-      <div className="mt-10 flex justify-end">
+      <div className="mt-10 flex items-center justify-end gap-3">
+        {saveErr ? <span className="text-sm text-red-600">{saveErr}</span> : null}
         <button
           onClick={handleSaveAll}
-          className="rounded-md bg-slate-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-900"
+          disabled={saving}
+          className="rounded-md bg-slate-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-60"
         >
-          Save Changes
+          {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
+
+      <CropImageModal
+        open={cropOpen}
+        src={cropSrc}
+        aspect={cropAspect}
+        onClose={() => setCropOpen(false)}
+        onDone={onCropDone}
+      />
     </div>
   );
 }

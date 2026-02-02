@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global styles */
 html, body {
   @apply bg-white text-gray-900 min-h-screen;
   margin: 0;
@@ -14,7 +13,6 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Remove focus outlines site-wide + iOS tap flash */
 @layer base {
   :where(button,[type='button'],[type='submit'],[role='button'],a,input,select,textarea) {
     @apply outline-none focus:outline-none focus:ring-0 ring-0;
@@ -29,7 +27,6 @@ html, body {
   * { -webkit-tap-highlight-color: transparent; }
 }
 
-/* Links */
 a {
   font-weight: 500;
   color: #646cff;
@@ -37,13 +34,11 @@ a {
 }
 a:hover { color: #535bf2; }
 
-/* Headings */
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
 }
 
-/* Buttons */
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -51,19 +46,51 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: transparent; /* Let Tailwind set background */
+  background-color: transparent;
   cursor: pointer;
   transition: border-color 0.25s, background-color 0.25s;
 }
 button:hover { border-color: #646cff; }
-/* removed the old button:focus / :focus-visible outline */
 
-/* Move report details modal to center-left */
+
 .report-details-modal[data-radix-dialog-content] {
   position: fixed !important;
   top: 50% !important;
   left: 30% !important;
-  transform: translateY(-50%) !important; /* only vertical centering */
+  transform: translateY(-50%) !important; 
 }
 
 .leaflet-marker-shadow { display: none !important; }
+
+
+.leaflet-container {
+  z-index: 0 !important;              
+}
+
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control {
+  z-index: 1 !important;
+}
+
+.leaflet-pane * {
+  z-index: 1 !important;
+}
+
+.body--menu-open .leaflet-container {
+  pointer-events: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:visited {
+  color: inherit;
+}
+
+a:hover {
+  color: inherit;
+}

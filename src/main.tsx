@@ -7,24 +7,17 @@ import 'leaflet/dist/leaflet.css';
 import "./lib/leaflet-icon-fix";
 console.log("[main] after icon fix import");
 
-// 🔎 ENV DEBUG — remove after testing
-console.log(
-  "[env] VITE_SUPABASE_URL:",
-  import.meta.env.VITE_SUPABASE_URL ?? "(undefined)"
-);
-console.log(
-  "[env] VITE_SUPABASE_ANON_KEY present:",
-  Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
-);
+console.log("[env] VITE_SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL ?? "(undefined)");
+console.log("[env] VITE_SUPABASE_ANON_KEY present:", Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY));
 if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
   console.warn("⚠️ Supabase env vars missing. Make sure .env is in project root and restart the dev server.");
 }
 
-// Import global styles
-import './index.css'
-import './App.css'
+import "./index.css";
+import "./App.css";
 
-import App from './App.tsx'
+import App from "./App";
+// IMPORTANT: use the named export from the Provider we added (with inactivity auto-logout)
 import AuthProvider from '@/context/AuthProvider'
 
 const updateSW = registerSW({
@@ -45,5 +38,5 @@ createRoot(document.getElementById('root')!).render(
         <App />
       </AuthProvider>
     </BrowserRouter>
-  </StrictMode>,
-)
+  </StrictMode>
+);

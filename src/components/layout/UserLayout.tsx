@@ -1,6 +1,10 @@
-// src/components/layout/UserLayout.tsx
 import { useEffect, useRef, useState } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import {
+  Outlet,
+  NavLink,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Home,
@@ -11,15 +15,20 @@ import {
   Menu,
   CalendarDays,
   Building2,
+  ChevronLeft,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient"; // sign out properly
-import circleLogo from "@/assets/circle logo.png"; // mobile header logo
+import { supabase } from "@/lib/supabaseClient";
+import circleLogo from "@/assets/circle logo.png";
 
 const UserLayout = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false); // desktop sidebar only
-  const [menuOpen, setMenuOpen] = useState(false); // mobile dropdown
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isHome = location.pathname === "/dashboard";
+  const isRAI = location.pathname.startsWith("/dashboard/report");
 
   // Close mobile dropdown when clicking outside
   useEffect(() => {
@@ -34,7 +43,6 @@ const UserLayout = () => {
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: Home },
     { name: "Events", href: "/dashboard/events", icon: CalendarDays },
-    // Projects removed
     { name: "Facilities", href: "/dashboard/facilities", icon: Building2 },
     { name: "Reports", href: "/dashboard/report", icon: ShieldAlert },
     { name: "Profile", href: "/dashboard/profile", icon: UserIcon },
@@ -90,7 +98,7 @@ const UserLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Mobile header with logo + dropdown */}
+      {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-sky-900 px-4 py-3 md:hidden">
         <img
           src={circleLogo}
@@ -98,7 +106,6 @@ const UserLayout = () => {
           className="h-8 w-8 rounded-full object-cover"
         />
 
-        {/* Menu wrapper (button + dropdown live inside this ref for outside-click) */}
         <div className="relative" ref={menuRef}>
           <Button
             variant="ghost"
@@ -112,7 +119,6 @@ const UserLayout = () => {
             <Menu className="h-6 w-6" />
           </Button>
 
-          {/* Full-screen-width dropdown */}
           {menuOpen && (
             <div
               role="menu"
@@ -122,7 +128,6 @@ const UserLayout = () => {
                 divide-y divide-sky-800
               "
             >
-              {/* Top: Home (Dashboard) */}
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {
@@ -134,7 +139,6 @@ const UserLayout = () => {
                 Home
               </button>
 
-              {/* Main links */}
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {
@@ -145,7 +149,7 @@ const UserLayout = () => {
                 <CalendarDays className="h-5 w-5" />
                 Events
               </button>
-              {/* Projects removed */}
+
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {
@@ -156,6 +160,7 @@ const UserLayout = () => {
                 <Building2 className="h-5 w-5" />
                 Facilities
               </button>
+
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {
@@ -166,6 +171,7 @@ const UserLayout = () => {
                 <ShieldAlert className="h-5 w-5" />
                 RAI
               </button>
+
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={() => {
@@ -177,8 +183,8 @@ const UserLayout = () => {
                 Profile
               </button>
 
-              {/* Bottom: Logout */}
               <div className="mt-2 border-t border-sky-800" />
+
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 text-base hover:bg-sky-800"
                 onClick={handleLogout}
@@ -200,8 +206,23 @@ const UserLayout = () => {
 
       {/* Main content */}
       <div className="md:pl-64 flex flex-col flex-1">
-        <main className="flex-1 p-4 h-[100dvh] overflow-hidden md:h-auto md:overflow-auto">
-          <div className="mx-auto w-full max-w-md pt-14 md:pt-0">
+        <main className="flex-1">
+          <div className="pt-14 md:pt-0 md:mx-auto md:w-full md:max-w-md md:p-4">
+            {/* Back to Home bar (NOT on home, NOT on RAI) */}
+            {!isHome && !isRAI && (
+              <div className="sticky top-[56px] md:top-0 z-20 bg-white/95 backdrop-blur border-b">
+                <div className="px-4 py-3">
+                  <button
+                    onClick={() => navigate("/dashboard")}
+                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back to Home
+                  </button>
+                </div>
+              </div>
+            )}
+
             <Outlet />
           </div>
         </main>
