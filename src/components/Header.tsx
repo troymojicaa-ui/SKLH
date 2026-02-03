@@ -56,19 +56,19 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
           <div className="hidden md:flex items-center space-x-6">
             <Link
               to="/"
-              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+              className="text-sm font-medium !text-white hover:!text-white transition-colors"
             >
               Home
             </Link>
             <Link
               to="/about"
-              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+              className="text-sm font-medium !text-white hover:!text-white transition-colors"
             >
               About
             </Link>
             <Link
               to="/events"
-              className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+              className="text-sm font-medium !text-white hover:!text-white transition-colors"
             >
               Events
             </Link>
@@ -77,7 +77,7 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
             {isLoggedIn && (
               <Link
                 to="/dashboard"
-                className="text-sm font-medium text-white/90 hover:text-white transition-colors"
+                className="text-sm font-medium !text-white hover:!text-white transition-colors"
               >
                 Dashboard
               </Link>
@@ -112,10 +112,7 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
         }`}
         aria-hidden={!menuOpen}
       >
-        <div
-          className="absolute inset-0 bg-black/60"
-          onClick={closeMenu}
-        />
+        <div className="absolute inset-0 bg-black/60" onClick={closeMenu} />
       </div>
 
       {/* Drawer panel */}
@@ -129,24 +126,32 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
         {/* Drawer header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-white/10">
           <span className="text-sm font-medium tracking-wide opacity-90">Menu</span>
-          <button
-            className="text-white"
-            onClick={closeMenu}
-            aria-label="Close menu"
-          >
+          <button className="text-white" onClick={closeMenu} aria-label="Close menu">
             <X size={22} />
           </button>
         </div>
 
         {/* Links */}
         <div className="px-6 py-8 flex flex-col gap-6 text-lg">
-          <Link to="/" onClick={closeMenu} className="hover:opacity-80 transition-opacity">
+          <Link
+            to="/"
+            onClick={closeMenu}
+            className="!text-white hover:opacity-80 transition-opacity"
+          >
             Home
           </Link>
-          <Link to="/about" onClick={closeMenu} className="hover:opacity-80 transition-opacity">
+          <Link
+            to="/about"
+            onClick={closeMenu}
+            className="!text-white hover:opacity-80 transition-opacity"
+          >
             About
           </Link>
-          <Link to="/events" onClick={closeMenu} className="hover:opacity-80 transition-opacity">
+          <Link
+            to="/events"
+            onClick={closeMenu}
+            className="!text-white hover:opacity-80 transition-opacity"
+          >
             Events
           </Link>
 
@@ -155,7 +160,7 @@ const Header = ({ onLogoutClick }: HeaderProps) => {
             <Link
               to="/dashboard"
               onClick={closeMenu}
-              className="hover:opacity-80 transition-opacity"
+              className="!text-white hover:opacity-80 transition-opacity"
             >
               Dashboard
             </Link>
