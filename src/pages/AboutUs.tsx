@@ -2,21 +2,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Button } from "@/components/ui/button";
 import { ChevronUp } from "lucide-react";
-import {
-  fetchAboutUs,
-  type AboutUsDTO,
-  type MemberDTO,
-  type TimelineItemDTO,
-} from "@/services/aboutUs";
+
+import { useAboutUs } from "../hooks/useAboutUs";
+import type { TimelineEvent, AboutUsData, TeamMember } from "../hooks/useAboutUs";
 
 export default function AboutUs() {
-  const [data, setData] = useState<AboutUsDTO | null>(null);
-  const [loading, setLoading] = useState(true);
-
   const [modalOpen, setModalOpen] = useState(false);
   const [modalImage, setModalImage] = useState<string | null>(null);
+
+
+  // const { data: aboutUs, isLoading: aboutUsLoading } = useAboutUs();
+  const { aboutUs, isAboutLoading, team, isTeamLoading, timeline, isTimelineLoading } = useAboutUs();
+
   const openModal = (src?: string | null) => {
     if (!src) return;
     setModalImage(src);
@@ -28,54 +26,47 @@ export default function AboutUs() {
   const teamSectionRef = useRef<HTMLElement | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const d = await fetchAboutUs();
-      setData(d);
-      setLoading(false);
-    })().catch(() => setLoading(false));
-  }, []);
 
-  useEffect(() => {
-    const el = teamSectionRef.current;
-    if (!el) return;
+  // useEffect(() => {
+  //   const el = teamSectionRef.current;
+  //   if (!el) return;
 
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        setShowScrollTop(entry.isIntersecting || entry.boundingClientRect.top < 0);
-      },
-      { threshold: 0, rootMargin: "-20% 0px 0px 0px" }
-    );
+  //   const io = new IntersectionObserver(
+  //     ([entry]) => {
+  //       setShowScrollTop(entry.isIntersecting || entry.boundingClientRect.top < 0);
+  //     },
+  //     { threshold: 0, rootMargin: "-20% 0px 0px 0px" }
+  //   );
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loading]);
+  //   io.observe(el);
+  //   return () => io.disconnect();
+  // }, [loading]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const featured = useMemo<MemberDTO | undefined>(() => {
-    if (!data?.team?.length) return undefined;
+  const featured = useMemo<TeamMember | undefined>(() => {
+    if (!team?.length) return undefined;
     const chair =
-      data.team.find((m) => (m.role || "").toLowerCase().includes("chair")) ??
-      data.team[0];
+      team.find((m) => (m.role || "").toLowerCase().includes("chair")) ??
+      team[0];
     return chair;
-  }, [data]);
+  }, [team]);
 
-  const rest = useMemo<MemberDTO[]>(() => {
-    if (!data?.team?.length) return [];
-    return featured ? data.team.filter((m) => m !== featured) : data.team;
-  }, [data, featured]);
+  const rest = useMemo<TeamMember[]>(() => {
+    if (!team?.length) return [];
+    return featured ? team.filter((m) => m !== featured) : team;
+  }, [team, featured]);
 
-  const timelineSorted = useMemo<TimelineItemDTO[]>(() => {
-    if (!Array.isArray(data?.timeline)) return [];
-    return data!.timeline
+  const timelineSorted = useMemo<TimelineEvent[]>(() => {
+    if (!Array.isArray(timeline)) return [];
+    return timeline
       .slice()
-      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  }, [data]);
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }, [timeline]);
 
-  if (loading || !data) {
+  if (isAboutLoading || isTeamLoading || isTimelineLoading) {
     return (
       <div className="min-h-screen bg-white">
         <Header />
@@ -96,11 +87,11 @@ export default function AboutUs() {
           <h1 className="text-[26px] font-medium">About</h1>
 
           <div className="mt-4 space-y-4 text-[12px] leading-relaxed text-white/85">
-            {data.whyWeMadeText ? (
-              <p className="whitespace-pre-wrap">{data.whyWeMadeText}</p>
+            {aboutUs?.why_text ? (
+              <p className="whitespace-pre-wrap">{aboutUs.why_text}</p>
             ) : null}
-            {data.missionText ? (
-              <p className="whitespace-pre-wrap">{data.missionText}</p>
+            {aboutUs?.mission_text ? (
+              <p className="whitespace-pre-wrap">{aboutUs.mission_text}</p>
             ) : null}
           </div>
         </div>
@@ -114,9 +105,9 @@ export default function AboutUs() {
       >
         <div className="mx-auto max-w-md text-center">
           <div className="mx-auto h-40 w-40 overflow-hidden rounded-full bg-white/30 ring-4 ring-white/40 shadow">
-            {data.whyWeMadeThisImage || data.heroImage ? (
+            {aboutUs?.why_image || aboutUs?.hero_image ? (
               <img
-                src={(data.whyWeMadeThisImage ?? data.heroImage)!}
+                src={(aboutUs.why_image ?? aboutUs.hero_image)!}
                 alt="Our Team"
                 className="h-full w-full object-cover"
               />
@@ -126,9 +117,7 @@ export default function AboutUs() {
           <h2 className="mt-6 text-[18px] font-medium text-black">Our Team</h2>
 
           <p className="mt-3 text-[11px] leading-relaxed text-black/70">
-            {data.teamIntroText
-              ? data.teamIntroText
-              : "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique."}
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique.
           </p>
 
           {(featured || rest.length > 0) && (
@@ -138,8 +127,8 @@ export default function AboutUs() {
                   name={featured.name}
                   role={featured.role}
                   bio={featured.bio}
-                  avatarUrl={featured.avatarUrl}
-                  onOpen={() => openModal(featured.avatarUrl)}
+                  avatarUrl={featured.avatar}
+                  onOpen={() => openModal(featured.avatar)}
                 />
               )}
 
@@ -149,8 +138,8 @@ export default function AboutUs() {
                   name={m.name}
                   role={m.role}
                   bio={m.bio}
-                  avatarUrl={m.avatarUrl}
-                  onOpen={() => openModal(m.avatarUrl)}
+                  avatarUrl={m.avatar}
+                  onOpen={() => openModal(m.avatar)}
                 />
               ))}
             </div>
@@ -161,9 +150,9 @@ export default function AboutUs() {
       <section className="relative bg-[#9AE4FF] px-6 pt-12 pb-16">
         <div className="mx-auto max-w-md text-center">
           <div className="mx-auto h-56 w-56 overflow-hidden rounded-[32px] bg-white/30 shadow-[0px_10px_30px_rgba(0,0,0,0.18)]">
-            {data.heroImage ? (
+            {aboutUs?.hero_image ? (
               <img
-                src={data.heroImage}
+                src={aboutUs.hero_image}
                 alt="Featured"
                 className="h-full w-full object-cover"
                 loading="lazy"
@@ -177,19 +166,13 @@ export default function AboutUs() {
       <section className="bg-[#9AE4FF] px-6 pt-10 pb-16">
         <div className="mx-auto max-w-md">
           <h2 className="text-[18px] font-medium leading-tight text-black text-center">
-            {data.timelineHeading ?? "Medium length section heading goes here"}
+            Medium length section heading goes here
           </h2>
 
-          {data.timelineSubheading ? (
-            <p className="mt-2 text-center text-[11px] leading-relaxed text-black/70 whitespace-pre-wrap">
-              {data.timelineSubheading}
-            </p>
-          ) : (
-            <p className="mt-2 text-center text-[11px] leading-relaxed text-black/70">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur
-              nec velit pulvinar, bibendum ante vitae, accumsan sem.
-            </p>
-          )}
+          <p className="mt-2 text-center text-[11px] leading-relaxed text-black/70">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur
+            nec velit pulvinar, bibendum ante vitae, accumsan sem.
+          </p>
 
           {timelineSorted.length > 0 && (
             <div className="mt-8">
@@ -209,9 +192,9 @@ export default function AboutUs() {
 
                     {/* Content */}
                     <div className="flex-1 pb-10">
-                      {t.date ? (
+                      {t.date_text ? (
                         <div className="text-[12px] font-semibold text-black">
-                          {t.date}
+                          {t.date_text}
                         </div>
                       ) : (
                         <div className="text-[12px] font-semibold text-black">
@@ -229,15 +212,15 @@ export default function AboutUs() {
                       </p>
 
                       {/* Button -> (matches reference) */}
-                      {t.buttonLabel && t.buttonUrl ? (
+                      {t.button_label && t.button_label ? (
                         <div className="mt-4">
                           <a
-                            href={t.buttonUrl}
+                            href={t.button_url || ''}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-2 text-[11px] text-black/80 hover:text-black"
                           >
-                            <span>{t.buttonLabel}</span>
+                            <span>{t.button_label}</span>
                             <span aria-hidden="true">→</span>
                           </a>
                         </div>

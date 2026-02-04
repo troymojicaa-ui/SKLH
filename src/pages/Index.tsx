@@ -1,5 +1,5 @@
 // src/pages/Index.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Target, Eye, Sparkles, ChevronRight, CalendarDays, MapPin } from "lucide-react";
 
@@ -9,6 +9,8 @@ import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { format } from "date-fns";
+
+import { useEvents } from "@/hooks/useEvents";
 
 /* types & utils */
 type Project = {
@@ -56,26 +58,50 @@ const Index = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginRole, setLoginRole] = useState<"admin" | "user">("user");
 
-  const [upcoming, setUpcoming] = useState<Project | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .gte("start_date", startOfTodayISO())
-        .order("start_date", { ascending: true })
-        .limit(5);
-      if (error) return;
-      const items = (data || []).filter((p) => !!safeDate(p.start_date));
-      items.sort(
-        (a, b) =>
-          (safeDate(a.start_date)?.getTime() ?? 0) -
-          (safeDate(b.start_date)?.getTime() ?? 0)
-      );
-      setUpcoming(items[0] ?? null);
-    })();
-  }, []);
+
+  // const [upcoming, setUpcoming] = useState<Project | null>(null);
+
+
+  // 1. Hook Integration
+  const { projects, isLoading } = useEvents();
+
+  // Replace the useState + useEffect with this:
+  const upcoming = useMemo(() => {
+    if (!projects || projects.length === 0) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return projects
+      .filter((p) => {
+        const pDate = new Date(p.start_date);
+        // Only include projects starting today or in the future
+        return pDate >= today;
+      })
+      .sort((a, b) => 
+        new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+      )[0] ?? null;
+  }, [projects]);
+
+  // useEffect(() => {
+  //   (async () => {
+  //     const { data, error } = await supabase
+  //       .from("projects")
+  //       .select("*")
+  //       .gte("start_date", startOfTodayISO())
+  //       .order("start_date", { ascending: true })
+  //       .limit(5);
+  //     if (error) return;
+  //     const items = (data || []).filter((p) => !!safeDate(p.start_date));
+  //     items.sort(
+  //       (a, b) =>
+  //         (safeDate(a.start_date)?.getTime() ?? 0) -
+  //         (safeDate(b.start_date)?.getTime() ?? 0)
+  //     );
+  //     setUpcoming(items[0] ?? null);
+  //   })();
+  // }, []);
 
   const handleLoginClick = (role: "admin" | "user") => {
     setLoginRole(role);
@@ -179,10 +205,10 @@ const Index = () => {
                   <span>{formatDateRange(upcoming.start_date, upcoming.end_date)}</span>
                 </div>
               )}
-              {upcoming?.location && (
+              {upcoming?.address && (
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-gray-600" />
-                  <span>{upcoming.location}</span>
+                  <span>{upcoming.address}</span>
                 </div>
               )}
             </div>
@@ -205,7 +231,7 @@ const Index = () => {
               {upcoming && (
                 <img
                   src={
-                    upcoming.cover_url ??
+                    upcoming?.cover_image ??
                     "https://via.placeholder.com/1200x675.png?text=Event+Cover"
                   }
                   alt={upcoming.title}

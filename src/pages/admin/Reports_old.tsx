@@ -12,8 +12,6 @@ import {
 import L, { LatLngExpression, Map as LeafletMap } from "leaflet";
 import { X, ChevronDown, ChevronUp } from "lucide-react";
 
-import { useReports } from "../../hooks/useReports";
-
 type ReportStatus = "pending" | "reviewed" | "resolved";
 
 type Report = {
@@ -212,203 +210,6 @@ function ModalShell({
 }
 
 export default function AdminReports() {
-  const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
-  const [sortDir, setSortDir] = useState<"new" | "old">("new");
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
-  const [filterOpen, setFilterOpen] = useState(false);
-
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [viewOpen, setViewOpen] = useState(false);
-
-  const { reports, isLoading } = useReports();
-
-
-  if(isLoading) return null;
-
-  return (
-    <div className="h-[calc(100vh-64px)] overflow-hidden">
-      <style>{`
-        .leaflet-control-attribution,.leaflet-control-scale{display:none!important}
-        .leaflet-pane,.leaflet-top,.leaflet-bottom{z-index:0}
-      `}</style>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 h-full p-4">
-        <div className="flex flex-col min-h-0">
-          <div className="rounded-[14px] p-4 mb-3" style={{ background: "#EAF2FF" }}>
-            <button
-              className="w-full rounded-[10px] h-10 text-white font-medium"
-              style={{ background: ADMIN_BLUE }}
-              onClick={() => setAddOpen(true)}
-            >
-              Add Report
-            </button>
-          </div>
-
-          <div className="mb-3">
-            <div className="w-full rounded-full border px-4 h-10 flex items-center justify-between bg-white">
-              <span className="text-sm text-gray-700">
-                Showing all <span className="font-semibold">{reports.length}</span> results
-              </span>
-              <button
-                className="text-sm inline-flex items-center gap-1"
-                onClick={() => setFilterOpen((v) => !v)}
-              >
-                {filterOpen ? "Collapse" : "Expand"}
-                {filterOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-            </div>
-
-            {filterOpen && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[12px] text-gray-500">Status</label>
-                  <select
-                    className="mt-1 w-full h-9 rounded-md border px-3 text-sm bg-white"
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as ReportStatus | "all")}
-                  >
-                    <option value="all">All</option>
-                    <option value="pending">Pending</option>
-                    <option value="reviewed">Reviewed</option>
-                    <option value="resolved">Resolved</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[12px] text-gray-500">Sort</label>
-                  <select
-                    className="mt-1 w-full h-9 rounded-md border px-3 text-sm bg-white"
-                    value={sortDir}
-                    onChange={(e) => setSortDir(e.target.value as "new" | "old")}
-                  >
-                    <option value="new">Newest to oldest</option>
-                    <option value="old">Oldest to newest</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[12px] text-gray-500">From</label>
-                  <input
-                    type="date"
-                    className="mt-1 w-full h-9 rounded-md border px-3 text-sm bg-white"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[12px] text-gray-500">To</label>
-                  <input
-                    type="date"
-                    className="mt-1 w-full h-9 rounded-md border px-3 text-sm bg-white"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-            {/* {filtered.map((r) => { */}
-            {reports.map((r) => {
-              const reviewedTag = r.status === "reviewed" || (r.status === "resolved" && r.edited);
-              const resolvedTag = r.status === "resolved";
-              return (
-                <div
-                  key={r.id}
-                  onMouseEnter={() => setHoverId(r.id)}
-                  onMouseLeave={() => setHoverId(null)}
-                  onClick={() => {
-                    setSelectedId(r.id);
-                    setViewOpen(true);
-                  }}
-                  className="rounded-[14px] p-4 cursor-pointer"
-                  style={{
-                    background: CARD_BG,
-                    boxShadow:
-                      "0 1px 2px rgba(16,24,40,0.05), 0 1px 3px rgba(16,24,40,0.06)",
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {resolvedTag && <Tag label="Resolved" />}
-                      {reviewedTag && <Tag label="Reviewed" />}
-                    </div>
-                    <button
-                      className="text-sm underline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedId(r.id);
-                        setEditOpen(true);
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-
-                  <div className="mt-1">
-                    <p className="text-[13px] text-gray-900 font-semibold">
-                      Report ID No. {(typeof r.report_number === "number" ? String(r.report_number).padStart(5, "0") : r.id.slice(0,5).toUpperCase())}
-                    </p>
-                    <p className="text-[12px] text-gray-600 italic line-clamp-2">
-                      {r.title || "—"}
-                    </p>
-                  </div>
-
-                  <div className="mt-2 text-xs text-gray-600">
-                    <div>{format(new Date(r.created_at), "dd MMM yyyy  p")}</div>
-                    {/* <div className="truncate">{getAddress(r)}</div> */}
-                    <div className="truncate">{r.address}</div>
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-2">
-                    <Pill
-                      label="Resolved"
-                      variant="green"
-                      disabled={r.status === "resolved"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // if (r.status !== "resolved") setStatus(r.id, "resolved");
-                      }}
-                    />
-                    <Pill
-                      label="Reviewed"
-                      variant="outline"
-                      disabled={r.status === "reviewed" || r.status === "resolved"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // if (r.status === "pending") setStatus(r.id, "reviewed");
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-
-
-        <div className="rounded-lg overflow-hidden border bg-white relative">
-          {/* <MapContainer
-            center={LOYOLA_CENTER}
-            zoom={DEFAULT_ZOOM}
-            style={{ height: "100%", width: "100%" }}
-            whenCreated={(m) => (mapRef.current = m)}
-            scrollWheelZoom
-            className="z-0"
-          ></MapContainer> */}
-        </div>
-      </div>
-
-    </div>
-  )
-}
-
-
-function AdminReports2() {
   const [reports, setReports] = useState<Report[]>([]);
   const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
   const [sortDir, setSortDir] = useState<"new" | "old">("new");
@@ -515,7 +316,6 @@ function AdminReports2() {
       `}</style>
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 h-full p-4">
-        {/* Side */}
         <div className="flex flex-col min-h-0">
           <div className="rounded-[14px] p-4 mb-3" style={{ background: "#EAF2FF" }}>
             <button
@@ -665,8 +465,7 @@ function AdminReports2() {
             })}
           </div>
         </div>
-        
-        {/* MAP */}
+
         <div className="rounded-lg overflow-hidden border bg-white relative">
           <MapContainer
             center={LOYOLA_CENTER}
@@ -849,243 +648,243 @@ function AdminReports2() {
   );
 }
 
-// function EditReportModal({
-//   report,
-//   onClose,
-//   onSave,
-// }: {
-//   report: Report;
-//   onClose: () => void;
-//   onSave: (r: Report) => Promise<void>;
-// }) {
-//   const [status, setStatus] = useState<ReportStatus>(report.status);
-//   const [description, setDescription] = useState<string>(report.description ?? "");
-//   const [remarks, setRemarks] = useState<string>(report.remarks ?? "");
-//   const [pin, setPin] = useState<{ lat: number; lng: number }>({
-//     lat: report.lat ?? (LOYOLA_CENTER as [number, number])[0],
-//     lng: report.lng ?? (LOYOLA_CENTER as [number, number])[1],
-//   });
+function EditReportModal({
+  report,
+  onClose,
+  onSave,
+}: {
+  report: Report;
+  onClose: () => void;
+  onSave: (r: Report) => Promise<void>;
+}) {
+  const [status, setStatus] = useState<ReportStatus>(report.status);
+  const [description, setDescription] = useState<string>(report.description ?? "");
+  const [remarks, setRemarks] = useState<string>(report.remarks ?? "");
+  const [pin, setPin] = useState<{ lat: number; lng: number }>({
+    lat: report.lat ?? (LOYOLA_CENTER as [number, number])[0],
+    lng: report.lng ?? (LOYOLA_CENTER as [number, number])[1],
+  });
 
-//   const displayId =
-//     typeof report.report_number === "number"
-//       ? String(report.report_number).padStart(5, "0")
-//       : report.id.slice(0, 5).toUpperCase();
+  const displayId =
+    typeof report.report_number === "number"
+      ? String(report.report_number).padStart(5, "0")
+      : report.id.slice(0, 5).toUpperCase();
 
-//   return (
-//     <ModalShell title="Edit Report" subtitle={`Report ID No. ${displayId}`} onClose={onClose}>
-//       <div className="grid md:grid-cols-2 gap-6">
-//         <div className="space-y-4">
-//           <div>
-//             <label className="text-sm font-medium">Report Status</label>
-//             <select
-//               className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
-//               value={status}
-//               onChange={(e) => setStatus(e.target.value as ReportStatus)}
-//             >
-//               <option value="pending">Pending</option>
-//               <option value="reviewed">Reviewed</option>
-//               <option value="resolved">Resolved</option>
-//             </select>
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Remark/s</label>
-//             <input
-//               className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
-//               value={remarks}
-//               onChange={(e) => setRemarks(e.target.value)}
-//               placeholder="Enter remark"
-//             />
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Description</label>
-//             <textarea
-//               className="mt-1 w-full rounded-md border p-3 text-sm bg-white min-h-[140px]"
-//               value={description}
-//               onChange={(e) => setDescription(e.target.value)}
-//               placeholder="Enter description"
-//             />
-//           </div>
-//           <div className="flex items-center gap-3 pt-2">
-//             <button className="h-10 px-5 rounded-xl bg-gray-300 text-gray-800" onClick={onClose}>
-//               Cancel
-//             </button>
-//             <button
-//               className="h-10 px-6 rounded-xl text-white"
-//               style={{ background: ADMIN_BLUE }}
-//               onClick={() =>
-//                 onSave({
-//                   ...report,
-//                   status,
-//                   description,
-//                   remarks,
-//                   lat: pin.lat,
-//                   lng: pin.lng,
-//                 })
-//               }
-//             >
-//               Save
-//             </button>
-//           </div>
-//         </div>
-//         <div className="rounded-xl overflow-hidden border aspect-square">
-//           <MapContainer
-//             center={[pin.lat, pin.lng]}
-//             zoom={17}
-//             style={{ height: "100%", width: "100%" }}
-//             scrollWheelZoom
-//           >
-//             <TileLayer attribution="" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-//             <DraggableMarker value={pin} onChange={setPin} />
-//           </MapContainer>
-//         </div>
-//       </div>
-//     </ModalShell>
-//   );
-// }
+  return (
+    <ModalShell title="Edit Report" subtitle={`Report ID No. ${displayId}`} onClose={onClose}>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Report Status</label>
+            <select
+              className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ReportStatus)}
+            >
+              <option value="pending">Pending</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Remark/s</label>
+            <input
+              className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Enter remark"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Description</label>
+            <textarea
+              className="mt-1 w-full rounded-md border p-3 text-sm bg-white min-h-[140px]"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter description"
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button className="h-10 px-5 rounded-xl bg-gray-300 text-gray-800" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="h-10 px-6 rounded-xl text-white"
+              style={{ background: ADMIN_BLUE }}
+              onClick={() =>
+                onSave({
+                  ...report,
+                  status,
+                  description,
+                  remarks,
+                  lat: pin.lat,
+                  lng: pin.lng,
+                })
+              }
+            >
+              Save
+            </button>
+          </div>
+        </div>
+        <div className="rounded-xl overflow-hidden border aspect-square">
+          <MapContainer
+            center={[pin.lat, pin.lng]}
+            zoom={17}
+            style={{ height: "100%", width: "100%" }}
+            scrollWheelZoom
+          >
+            <TileLayer attribution="" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+            <DraggableMarker value={pin} onChange={setPin} />
+          </MapContainer>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
 
-// function AddReportModal({
-//   onClose,
-//   onSave,
-// }: {
-//   onClose: () => void;
-//   onSave: (p: {
-//     title: string;
-//     description: string;
-//     status: ReportStatus;
-//     lat: number;
-//     lng: number;
-//     remarks?: string | null;
-//     file?: File | null;
-//   }) => Promise<void>;
-// }) {
-//   const [title, setTitle] = useState("");
-//   const [desc, setDesc] = useState("");
-//   const [remarks, setRemarks] = useState("");
-//   const [status, setStatus] = useState<ReportStatus>("pending");
-//   const [pin, setPin] = useState<{ lat: number; lng: number }>({
-//     lat: (LOYOLA_CENTER as [number, number])[0],
-//     lng: (LOYOLA_CENTER as [number, number])[1],
-//   });
-//   const [file, setFile] = useState<File | null>(null);
+function AddReportModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (p: {
+    title: string;
+    description: string;
+    status: ReportStatus;
+    lat: number;
+    lng: number;
+    remarks?: string | null;
+    file?: File | null;
+  }) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [status, setStatus] = useState<ReportStatus>("pending");
+  const [pin, setPin] = useState<{ lat: number; lng: number }>({
+    lat: (LOYOLA_CENTER as [number, number])[0],
+    lng: (LOYOLA_CENTER as [number, number])[1],
+  });
+  const [file, setFile] = useState<File | null>(null);
 
-//   return (
-//     <ModalShell title="Add Report" onClose={onClose}>
-//       <div className="grid md:grid-cols-2 gap-6">
-//         <div className="space-y-4">
-//           <div>
-//             <label className="text-sm font-medium">Title</label>
-//             <input
-//               className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
-//               value={title}
-//               onChange={(e) => setTitle(e.target.value)}
-//               placeholder="Enter title"
-//             />
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Description</label>
-//             <textarea
-//               className="mt-1 w-full rounded-md border p-3 text-sm bg-white min-h-[120px]"
-//               value={desc}
-//               onChange={(e) => setDesc(e.target.value)}
-//               placeholder="Enter description"
-//             />
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Report Status</label>
-//             <select
-//               className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
-//               value={status}
-//               onChange={(e) => setStatus(e.target.value as ReportStatus)}
-//             >
-//               <option value="pending">Pending</option>
-//               <option value="reviewed">Reviewed</option>
-//               <option value="resolved">Resolved</option>
-//             </select>
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Remark/s</label>
-//             <input
-//               className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
-//               value={remarks}
-//               onChange={(e) => setRemarks(e.target.value)}
-//               placeholder="Enter remark"
-//             />
-//           </div>
-//           <div>
-//             <label className="text-sm font-medium">Upload image</label>
-//             <input
-//               type="file"
-//               accept="image/*"
-//               className="mt-1 block w-full text-sm"
-//               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-//             />
-//           </div>
-//           <div className="flex items-center gap-3 pt-2">
-//             <button className="h-10 px-5 rounded-xl bg-gray-300 text-gray-800" onClick={onClose}>
-//               Cancel
-//             </button>
-//             <button
-//               className="h-10 px-6 rounded-xl text-white"
-//               style={{ background: ADMIN_BLUE }}
-//               onClick={() =>
-//                 onSave({
-//                   title,
-//                   description: desc,
-//                   status,
-//                   lat: pin.lat,
-//                   lng: pin.lng,
-//                   remarks,
-//                   file,
-//                 })
-//               }
-//             >
-//               Save
-//             </button>
-//           </div>
-//         </div>
-//         <div className="rounded-xl overflow-hidden border aspect-square">
-//           <MapContainer
-//             center={[pin.lat, pin.lng]}
-//             zoom={17}
-//             style={{ height: "100%", width: "100%" }}
-//             scrollWheelZoom
-//           >
-//             <TileLayer attribution="" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-//             <DraggableMarker value={pin} onChange={setPin} />
-//           </MapContainer>
-//         </div>
-//       </div>
-//     </ModalShell>
-//   );
-// }
+  return (
+    <ModalShell title="Add Report" onClose={onClose}>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Title</label>
+            <input
+              className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter title"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Description</label>
+            <textarea
+              className="mt-1 w-full rounded-md border p-3 text-sm bg-white min-h-[120px]"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Enter description"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Report Status</label>
+            <select
+              className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ReportStatus)}
+            >
+              <option value="pending">Pending</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Remark/s</label>
+            <input
+              className="mt-1 w-full h-10 rounded-md border px-3 text-sm bg-white"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Enter remark"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Upload image</label>
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-1 block w-full text-sm"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button className="h-10 px-5 rounded-xl bg-gray-300 text-gray-800" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="h-10 px-6 rounded-xl text-white"
+              style={{ background: ADMIN_BLUE }}
+              onClick={() =>
+                onSave({
+                  title,
+                  description: desc,
+                  status,
+                  lat: pin.lat,
+                  lng: pin.lng,
+                  remarks,
+                  file,
+                })
+              }
+            >
+              Save
+            </button>
+          </div>
+        </div>
+        <div className="rounded-xl overflow-hidden border aspect-square">
+          <MapContainer
+            center={[pin.lat, pin.lng]}
+            zoom={17}
+            style={{ height: "100%", width: "100%" }}
+            scrollWheelZoom
+          >
+            <TileLayer attribution="" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+            <DraggableMarker value={pin} onChange={setPin} />
+          </MapContainer>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
 
-// function SideDetails({
-//   title,
-//   children,
-//   onClose,
-// }: {
-//   title: string;
-//   children: React.ReactNode;
-//   onClose: () => void;
-// }) {
-//   return (
-//     <>
-//       <div className="fixed inset-0 bg-black/40 z-[80]" onClick={onClose} />
-//       <div
-//         className="fixed inset-y-0 left-0 z-[81] w-full sm:w-[520px] transform transition-transform duration-300 translate-x-0 bg-white shadow-2xl"
-//         onClick={(e) => e.stopPropagation()}
-//       >
-//         <div className="flex items-center justify-between px-6 py-4 border-b">
-//           <h3 className="text-base font-semibold">{title}</h3>
-//           <button
-//             className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
-//             onClick={onClose}
-//           >
-//             <X className="h-5 w-5 text-gray-700" />
-//           </button>
-//         </div>
-//         <div className="overflow-y-auto h-[calc(100%-57px)]">{children}</div>
-//       </div>
-//     </>
-//   );
-// }
+function SideDetails({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-[80]" onClick={onClose} />
+      <div
+        className="fixed inset-y-0 left-0 z-[81] w-full sm:w-[520px] transform transition-transform duration-300 translate-x-0 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-base font-semibold">{title}</h3>
+          <button
+            className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5 text-gray-700" />
+          </button>
+        </div>
+        <div className="overflow-y-auto h-[calc(100%-57px)]">{children}</div>
+      </div>
+    </>
+  );
+}

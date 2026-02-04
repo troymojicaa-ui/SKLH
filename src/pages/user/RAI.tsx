@@ -15,12 +15,14 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { refFromId } from "@/lib/refCode";
 
+import { useReports } from "@/hooks/useReports"; // Your new CRUD hook
+
 type ReportRow = {
   id: string;
   title: string;
   description: string | null;
   status: "pending" | "in_progress" | "resolved" | string;
-  photo_url: string | null;
+  attachment_url: string | null;
   created_at: string;
 };
 
@@ -28,37 +30,43 @@ export default function UserRAI() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [rows, setRows] = useState<ReportRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // const [rows, setRows] = useState<ReportRow[]>([]);
+  // const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let ignore = false;
+  // 1. Use the TanStack-powered hook instead of useEffect/useState
+  const { reports, isLoading } = useReports();
 
-    async function load() {
-      setLoading(true);
+  // 2. Map the data safely (TanStack returns 'data', we named it 'reports' in the hook)
+  const rows: ReportRow[] = reports ?? [];
 
-      const { data, error } = await supabase
-        .from("reports")
-        .select("id, title, description, status, photo_url, created_at")
-        .order("created_at", { ascending: false });
+  // useEffect(() => {
+  //   let ignore = false;
 
-      if (!ignore) {
-        if (error) {
-          setRows([]);
-        } else {
-          setRows(data ?? []);
-        }
-        setLoading(false);
-      }
-    }
+  //   async function load() {
+  //     setLoading(true);
 
-    load();
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
+  //     const { data, error } = await supabase
+  //       .from("reports")
+  //       .select("id, title, description, status, photo_url, created_at")
+  //       .order("created_at", { ascending: false });
 
-  if (loading) {
+  //     if (!ignore) {
+  //       if (error) {
+  //         setRows([]);
+  //       } else {
+  //         setRows(data ?? []);
+  //       }
+  //       setLoading(false);
+  //     }
+  //   }
+
+  //   load();
+  //   return () => {
+  //     ignore = true;
+  //   };
+  // }, [user?.id]);
+
+  if (isLoading) {
     return (
       <div className="p-4 space-y-3">
         <Skeleton className="h-10 w-1/2" />
@@ -132,10 +140,10 @@ export default function UserRAI() {
                 </AccordionTrigger>
 
                 <AccordionContent>
-                  {r.photo_url ? (
+                  {r.attachment_url ? (
                     <div className="mb-2">
                       <img
-                        src={r.photo_url}
+                        src={r.attachment_url}
                         alt="Report"
                         className="h-40 w-full rounded-md object-cover"
                       />

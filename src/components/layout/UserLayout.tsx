@@ -17,8 +17,10 @@ import {
   Building2,
   ChevronLeft,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+// import { supabase } from "@/lib/supabaseClient";
 import circleLogo from "@/assets/circle logo.png";
+
+import { useAuth } from "../../hooks/useAuth";
 
 const UserLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,6 +28,8 @@ const UserLayout = () => {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { logout } = useAuth();
 
   const isHome = location.pathname === "/dashboard";
   const isRAI = location.pathname.startsWith("/dashboard/report");
@@ -50,7 +54,8 @@ const UserLayout = () => {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      // await supabase.auth.signOut();
+      logout()
     } finally {
       window.location.href = "/";
     }

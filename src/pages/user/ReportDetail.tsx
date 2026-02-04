@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+import { useReports } from "@/hooks/useReports"; // Your TanStack CRUD hook
+
 type Row = {
   id: string;
   title: string;
@@ -19,36 +21,42 @@ type Row = {
 };
 
 export default function ReportDetail() {
+  // const { id } = useParams<{ id: string }>();
+  // const [row, setRow] = useState<Row | null>(null);
+  // const [loading, setLoading] = useState(true);
+
   const { id } = useParams<{ id: string }>();
-  const [row, setRow] = useState<Row | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let ignore = false;
-    async function load() {
-      if (!id) return;
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("reports")
-        .select("id,title,description,status,photo_url,address,lat,lng,created_at")
-        .eq("id", id)
-        .single();
-      if (!ignore) {
-        setRow(error ? null : data);
-        setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      ignore = true;
-    };
-  }, [id]);
+  // 1. Pass the 'id' to your hook to fetch the specific report
+  // TanStack handles the fetch, loading state, and error logic
+  const { reports: row, isLoading, isError } = useReports(id);
 
-  if (loading) {
-    return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
-  }
+  // useEffect(() => {
+  //   let ignore = false;
+  //   async function load() {
+  //     if (!id) return;
+  //     setLoading(true);
+  //     const { data, error } = await supabase
+  //       .from("reports")
+  //       .select("id,title,description,status,photo_url,address,lat,lng,created_at")
+  //       .eq("id", id)
+  //       .single();
+  //     if (!ignore) {
+  //       setRow(error ? null : data);
+  //       setLoading(false);
+  //     }
+  //   }
+  //   load();
+  //   return () => {
+  //     ignore = true;
+  //   };
+  // }, [id]);
 
-  if (!row) {
+  // if (loading) {
+  //   return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  // }
+
+  if (isError || !row) {
     return (
       <div className="p-4">
         <p className="text-sm text-red-600">Report not found.</p>
@@ -73,9 +81,9 @@ export default function ReportDetail() {
 
       <Card className="mb-4">
         <CardContent className="p-4">
-          {row.photo_url ? (
+          {row.attachment_url ? (
             <img
-              src={row.photo_url}
+              src={row.attachment_url}
               alt="Report"
               className="mb-3 h-56 w-full rounded-md object-cover"
             />

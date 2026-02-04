@@ -14,42 +14,50 @@ import {
   Calendar,
   Building2,
 } from "lucide-react";
-import { useAuth } from "@/context/AuthProvider";
+// import { useAuth } from "@/context/AuthProvider";
+
+import { useAuth } from "../../hooks/useAuth";
 
 const ADMIN_BLUE = "#173A67";
 
 const AdminLayout = () => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { signOut, loading, session } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  // const { signOut, loading, session } = useAuth();
+  // const navigate = useNavigate();
+  // const location = useLocation();
 
-  // 🔒 Avoid redirect loop on logout
-  const loggingOutRef = useRef(false);
+  // // 🔒 Avoid redirect loop on logout
+  // const loggingOutRef = useRef(false);
 
-  // Guard: wait for loading; if no session and we're not in the middle of logout,
-  // send to /admin (which shows modal)
-  useEffect(() => {
-    if (loading || loggingOutRef.current) return;
-    if (!session) {
-      navigate(`/admin?next=${encodeURIComponent(location.pathname)}`, { replace: true });
-    }
-  }, [loading, session, navigate, location.pathname]);
+  const { isAuthenticated, isAdmin, logout, isLoading } = useAuth();
 
-  // Redirect to homepage after logout (and suppress guard during the transition)
-  const handleLogout = async () => {
-    try {
-      loggingOutRef.current = true;
-      setMenuOpen(false);
-      await signOut();
-      navigate("/", { replace: true });
-    } finally {
-      // small delay to ensure route change settles before re-enabling guard
-      setTimeout(() => {
-        loggingOutRef.current = false;
-      }, 0);
-    }
-  };
+  // // Guard: wait for loading; if no session and we're not in the middle of logout,
+  // // send to /admin (which shows modal)
+  // useEffect(() => {
+  //   if (loading || loggingOutRef.current) return;
+  //   if (!session) {
+  //     navigate(`/admin?next=${encodeURIComponent(location.pathname)}`, { replace: true });
+  //   }
+  // }, [loading, session, navigate, location.pathname]);
+
+  // // Redirect to homepage after logout (and suppress guard during the transition)
+  // const handleLogout = async () => {
+  //   try {
+  //     loggingOutRef.current = true;
+  //     setMenuOpen(false);
+  //     await signOut();
+  //     navigate("/", { replace: true });
+  //   } finally {
+  //     // small delay to ensure route change settles before re-enabling guard
+  //     setTimeout(() => {
+  //       loggingOutRef.current = false;
+  //     }, 0);
+  //   }
+  // };
+
+  const handleLogout = () => {
+    logout()
+  }
 
   const navigation = [
     { name: "Dashboard", href: ".", icon: Home, end: true },
@@ -87,7 +95,7 @@ const AdminLayout = () => {
   );
 
   // While auth is resolving and before we know if there's a session, show a tiny bar
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-dvh bg-gray-50">
         <header
@@ -109,7 +117,7 @@ const AdminLayout = () => {
   }
 
   // If no session, the effect above will navigate; render nothing briefly.
-  if (!session) return null;
+  // if (!session) return null;
 
   return (
     <div className="min-h-dvh bg-gray-50">
@@ -117,7 +125,7 @@ const AdminLayout = () => {
         className="sticky top-0 z-50 w-full border-b border-black/10"
         style={{ backgroundColor: ADMIN_BLUE }}
       >
-        <div className="h-12 w-full px-3 md:px-5 flex items-center">
+        <div className="h-12 w-full px-3 md:px-5 flex items-center text-white">
           <div className="md:hidden mr-2">
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
               <SheetTrigger asChild>

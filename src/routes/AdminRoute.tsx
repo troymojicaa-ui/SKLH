@@ -1,12 +1,16 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "@/context/AuthProvider";
+// import { useAuth } from "@/context/AuthProvider";
+
+import { useAuth } from "../hooks/useAuth";
 
 export default function AdminRoute() {
-  const { session, role, loading } = useAuth();
+  // const { session, role, loading } = useAuth();
 
-  if (loading) return null;
-  if (!session) return <Navigate to="/" replace />;
-  if (role !== "admin") return <Navigate to="/connect/app" replace />;
+  const { isAuthenticated, isAdmin, isLoading } = useAuth();
+
+  if (isLoading) return null;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;
 }

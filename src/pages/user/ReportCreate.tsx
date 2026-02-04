@@ -10,6 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabaseClient";
 import { refFromId } from "@/lib/refCode"; // ✅ NEW
 
+import { useReverseGeocoding } from "../../hooks/useReverseGeocoding";
+import { useReports } from "../../hooks/useReports";
+
 const SUCCESS_PATH = "/dashboard/report/success"; // ⬅ change to "/dashboard/report/submitted" if that's your route
 
 const markerIcon = new L.Icon({
@@ -59,6 +62,15 @@ export default function ReportCreate() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+
+  const { data: geoData, isFetching: isResolvingAddress } = useReverseGeocoding(
+    coords?.lat,
+    coords?.lng
+  );
+
+  const { createReport } = useReports();
+  
+
   const defaultCenter: LatLngExpression = useMemo(() => [14.6475, 121.0737], []);
 
   // ask for geolocation
@@ -72,24 +84,33 @@ export default function ReportCreate() {
     );
   }
 
+  // useEffect(() => {
+  //   let cancelled = false;
+  //   (async () => {
+  //     if (!coords) {
+  //       setAddress(null);
+  //       return;
+  //     }
+  //     setResolving(true);
+  //     const addr = await reverseGeocode(coords.lat, coords.lng);
+  //     if (!cancelled) {
+  //       setAddress(addr);
+  //       setResolving(false);
+  //     }
+  //   })();
+  //   return () => {
+  //     cancelled = true;
+  //   };
+  // }, [coords]);
+
+
+  
+    // 2. Sync the API result to your local address state
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!coords) {
-        setAddress(null);
-        return;
-      }
-      setResolving(true);
-      const addr = await reverseGeocode(coords.lat, coords.lng);
-      if (!cancelled) {
-        setAddress(addr);
-        setResolving(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [coords]);
+    if (geoData?.display_name) {
+      setAddress(geoData.display_name);
+    }
+  }, [geoData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,52 +118,74 @@ export default function ReportCreate() {
       alert("Please select a location first.");
       return;
     }
+
+    if (isResolvingAddress) {
+      alert("Please wait for address to load.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) throw new Error("Please log in first.");
 
-      let addr = address;
-      if (!addr) {
-        setResolving(true);
-        addr = await reverseGeocode(coords.lat, coords.lng);
-        setResolving(false);
-        setAddress(addr ?? null);
+      // const { data: userData } = await supabase.auth.getUser();
+      // const user = userData.user;
+      // if (!user) throw new Error("Please log in first.");
+
+      // let addr = address;
+      // if (!addr) {
+      //   setResolving(true);
+      //   addr = await reverseGeocode(coords.lat, coords.lng);
+      //   setResolving(false);
+      //   setAddress(addr ?? null);
+      // }
+
+      // let photo_url: string | null = null;
+      // if (photo) {
+      //   const ext = (photo.name.split(".").pop() || "jpg").toLowerCase();
+      //   const path = `${user.id}/${Date.now()}.${ext}`;
+      //   const { error: upErr } = await supabase.storage
+      //     .from("report-photos")
+      //     .upload(path, photo, { cacheControl: "3600" });
+      //   if (upErr) throw upErr;
+      //   const { data: pub } = supabase.storage.from("report-photos").getPublicUrl(path);
+      //   photo_url = pub?.publicUrl ?? null;
+      // }
+
+      // // ✅ Insert and select the new id back so we can compute the Issue Ref #
+      // const { data: inserted, error: insErr } = await supabase
+      //   .from("reports")
+      //   .insert({
+      //     user_id: user.id,
+      //     title,
+      //     description: desc,
+      //     status: "pending",
+      //     lat: coords.lat,
+      //     lng: coords.lng,
+      //     address: addr ?? null,
+      //     photo_url,
+      //   })
+      //   .select("id")
+      //   .single();
+
+      const data = {
+        title: title,
+        description: desc,
+        lat: coords.lat,
+        lng: coords.lng,
+        address: address,
+        attachment: photo,
       }
 
-      let photo_url: string | null = null;
-      if (photo) {
-        const ext = (photo.name.split(".").pop() || "jpg").toLowerCase();
-        const path = `${user.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("report-photos")
-          .upload(path, photo, { cacheControl: "3600" });
-        if (upErr) throw upErr;
-        const { data: pub } = supabase.storage.from("report-photos").getPublicUrl(path);
-        photo_url = pub?.publicUrl ?? null;
-      }
+      // createReport()
 
-      // ✅ Insert and select the new id back so we can compute the Issue Ref #
-      const { data: inserted, error: insErr } = await supabase
-        .from("reports")
-        .insert({
-          user_id: user.id,
-          title,
-          description: desc,
-          status: "pending",
-          lat: coords.lat,
-          lng: coords.lng,
-          address: addr ?? null,
-          photo_url,
-        })
-        .select("id")
-        .single();
+      const response = await createReport(data);
+      console.log("New Report ID:", response.data.id);
+      console.log("New Report Number:", response.data.report_number);
 
-      if (insErr) throw insErr;
+      // if (insErr) throw insErr;
 
       // ✅ Compute short, human-friendly reference and go to success screen
-      const ref = refFromId(inserted.id);
+      const ref = refFromId(response.data.id);
       navigate(`${SUCCESS_PATH}?ref=${encodeURIComponent(ref)}`);
     } catch (err: any) {
       alert(err?.message ?? "Failed to submit report.");

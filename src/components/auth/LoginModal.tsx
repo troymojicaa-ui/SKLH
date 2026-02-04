@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserCircle, Shield } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+// import { supabase } from "@/lib/supabaseClient";
+
+import { useAuth } from "../../hooks/useAuth";
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -27,86 +29,92 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
   const [isSendingLink, setIsSendingLink] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Pull what we need from our custom hook
+  const { login, isLoggingIn, loginError } = useAuth();
+
   // 🔑 FIX: Connect users go to /dashboard (not /connect/app)
-  const getDestinationFromProfile = async (): Promise<
-    "/admin/app" | "/dashboard"
-  > => {
-    const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user?.id;
+  // const getDestinationFromProfile = async (): Promise<
+  //   "/admin/app" | "/dashboard"
+  // > => {
+  //   const { data } = await supabase.auth.getSession();
+  //   const userId = data.session?.user?.id;
 
-    if (!userId) {
-      return role === "admin" ? "/admin/app" : "/dashboard";
-    }
+  //   if (!userId) {
+  //     return role === "admin" ? "/admin/app" : "/dashboard";
+  //   }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
+  //   const { data: profile } = await supabase
+  //     .from("profiles")
+  //     .select("role")
+  //     .eq("id", userId)
+  //     .maybeSingle();
 
-    const resolvedRole =
-      (profile?.role as "admin" | "user") ??
-      (role === "admin" ? "admin" : "user");
+  //   const resolvedRole =
+  //     (profile?.role as "admin" | "user") ??
+  //     (role === "admin" ? "admin" : "user");
 
-    return resolvedRole === "admin" ? "/admin/app" : "/dashboard";
-  };
+  //   return resolvedRole === "admin" ? "/admin/app" : "/dashboard";
+  // };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
 
-    if (!email.trim()) {
-      setMsg("Please enter your email.");
+    if (!email.trim() || !password.trim()) {
+      setMsg("Please enter your email and password.");
       return;
     }
 
-    // MAGIC LINK
-    if (!password.trim()) {
-      setIsSendingLink(true);
-      try {
-        const dest = role === "admin" ? "admin" : "connect";
-        const redirect = `${window.location.origin}/auth/callback?dest=${dest}`;
-        localStorage.setItem("post_login_dest", dest);
+    // // MAGIC LINK
+    // if (!password.trim()) {
+    //   setIsSendingLink(true);
+    //   try {
+    //     const dest = role === "admin" ? "admin" : "connect";
+    //     const redirect = `${window.location.origin}/auth/callback?dest=${dest}`;
+    //     localStorage.setItem("post_login_dest", dest);
 
-        const options =
-          role === "admin"
-            ? { shouldCreateUser: false, emailRedirectTo: redirect }
-            : { emailRedirectTo: redirect };
+    //     const options =
+    //       role === "admin"
+    //         ? { shouldCreateUser: false, emailRedirectTo: redirect }
+    //         : { emailRedirectTo: redirect };
 
-        const { error } = await supabase.auth.signInWithOtp({
-          email: email.trim(),
-          options,
-        });
+    //     const { error } = await supabase.auth.signInWithOtp({
+    //       email: email.trim(),
+    //       options,
+    //     });
 
-        if (error) throw error;
+    //     if (error) throw error;
 
-        setMsg("Magic link sent! Check your email to complete sign-in.");
-      } catch (err: any) {
-        setMsg(err?.message ?? "Failed to send magic link.");
-      } finally {
-        setIsSendingLink(false);
-      }
-      return;
-    }
+    //     setMsg("Magic link sent! Check your email to complete sign-in.");
+    //   } catch (err: any) {
+    //     setMsg(err?.message ?? "Failed to send magic link.");
+    //   } finally {
+    //     setIsSendingLink(false);
+    //   }
+    //   return;
+    // }
 
-    // EMAIL + PASSWORD
-    setIsLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (error) throw error;
+    // // EMAIL + PASSWORD
+    // setIsLoading(true);
+    // try {
+    //   const { error } = await supabase.auth.signInWithPassword({
+    //     email: email.trim(),
+    //     password,
+    //   });
+    //   if (error) throw error;
 
-      const dest = await getDestinationFromProfile();
+    //   const dest = await getDestinationFromProfile();
 
-      onClose();
-      navigate(dest, { replace: true });
-    } catch (err: any) {
-      setMsg(err?.message ?? "Login failed.");
-    } finally {
-      setIsLoading(false);
-    }
+    //   onClose();
+    //   navigate(dest, { replace: true });
+    // } catch (err: any) {
+    //   setMsg(err?.message ?? "Login failed.");
+    // } finally {
+    //   setIsLoading(false);
+    // }
+
+    // Login using django api
+    login({email, password});
   };
 
   return (
@@ -151,7 +159,7 @@ const LoginModal = ({ isOpen, onClose, role }: LoginModalProps) => {
               ? "Signing in…"
               : isSendingLink
               ? "Sending link…"
-              : "Login / Send Magic Link"}
+              : "Login"}
           </Button>
 
           {msg && <p className="text-sm text-red-600">{msg}</p>}

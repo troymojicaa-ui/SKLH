@@ -173,10 +173,10 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Route path="/admin" element={<AdminLoginRoute />} />
+        {/* <Route path="/admin" element={<AdminLoginRoute />} /> */}
 
         <Route element={<AdminRoute />}>
-          <Route path="/admin/app" element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="reports" element={<Reports />} />
             <Route path="youth-database" element={<YouthDatabase />} />

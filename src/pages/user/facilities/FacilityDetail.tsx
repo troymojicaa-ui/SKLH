@@ -4,17 +4,20 @@ import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { MapPin, Clock, ChevronLeft, ChevronRight, X, Building2 } from "lucide-react";
 import { NavLink, useParams } from "react-router-dom";
-import type { Facility } from "./Facilities";
+// import type { Facility } from "./Facilities";
 import L, { LatLngExpression } from "leaflet";
 import MapView from "../../admin/components/Mapview";
 import { Marker } from "react-leaflet";
+
+import { useFacilities } from "@/hooks/useFacilities";
+import type { Facility, FacilityHour } from "../../../hooks/useFacilities";
 
 type HoursDay = { open?: string | null; close?: string | null; closed?: boolean | null };
 type Hours = Partial<Record<"sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat", HoursDay>>;
 const DAY_KEYS: Array<keyof Hours> = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function buildHoursFromRows(rows: Facility["facility_hours"] | undefined): Hours | null {
+function buildHoursFromRows(rows: FacilityHour[] | undefined): Hours | null {
   if (!rows || rows.length === 0) return null;
   const out: Hours = {};
   for (const r of rows) {
@@ -31,10 +34,10 @@ function hasAnyHours(h?: Hours | null) {
   return Object.values(h).some((d) => d && (d.closed === false || (!!d.open && !!d.close)));
 }
 function photosFrom(f?: Facility): string[] {
-  const arr = (f?.facility_photos ?? [])
+  const arr = (f?.photos ?? [])
     .slice()
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    .map((p) => (p.url || "").trim())
+    .map((p) => (p.image || "").trim())
     .filter(Boolean);
   return Array.from(new Set(arr));
 }
@@ -98,11 +101,11 @@ function PhotoCarousel({ images, className = "" }: { images: string[]; className
 
 function DetailView({ facility }: { facility: Facility; }) {
   const images = useMemo(() => photosFrom(facility), [facility]);
-  const hours = useMemo(() => buildHoursFromRows(facility?.facility_hours), [facility]);
+  const hours = useMemo(() => buildHoursFromRows(facility?.hours), [facility]);
 
 	const DEFAULT_ZOOM = 16;
 
-	const markerLocation = facility.facility_address ? [facility.facility_address.lat, facility.facility_address.lng] : null
+	const markerLocation = facility.address ? [facility.lat, facility.lng] : null
 
   return (
     <div className="">
@@ -119,7 +122,7 @@ function DetailView({ facility }: { facility: Facility; }) {
               <MapPin className="h-4 w-4 text-slate-600" />
               Location
             </div>
-            <p className="mt-1 text-sm text-slate-700 break-words">{facility.facility_address.address}</p>
+            <p className="mt-1 text-sm text-slate-700 break-words">{facility.address}</p>
 						{ markerLocation && (
 							<div className="h-64 w-full">
 								<MapView center={markerLocation} zoom={DEFAULT_ZOOM}>
@@ -160,39 +163,43 @@ function DetailView({ facility }: { facility: Facility; }) {
 }
 
 export default function FacilityDetail() {
-	const { id: facilityId } = useParams<{ id: string }>();
-	const [facility, setFacility] = useState<Facility|null>(null);
-	const [loading, setLoading] = useState(true);
-	const [err, setErr] = useState<string | null>(null);
+	// const { id: facilityId } = useParams<{ id: string }>();
+	// const [facility, setFacility] = useState<Facility|null>(null);
+	// const [loading, setLoading] = useState(true);
+	// const [err, setErr] = useState<string | null>(null);
 
-	async function load() {
-		setLoading(true);
-		setErr(null);
-		try {
-			const { data, error } = await supabase
-				.from("facilities")
-				.select(
-					`
-					id, name, description,
-					facility_photos:facility_photos(url, sort_order),
-					facility_hours:facility_hours(dow, open_time, close_time),
-					facility_address:facility_addresses(address, lat, lng)
-				`
-				)
-				.eq("id", facilityId) 
-				.single();
-			if (error) throw error;
-			setFacility(data as Facility);
-		} catch (e: any) {
-			setErr(e?.message ?? "Failed to load facilities.");
-		} finally {
-			setLoading(false);
-		}
-	}
+  const { id } = useParams<{ id: string }>();
+  // Use the hook with the specific ID
+  const { facility, isLoading, isError } = useFacilities(id || null);
 
-	useEffect(() => {
-		load();
-	}, []);
+	// async function load() {
+	// 	setLoading(true);
+	// 	setErr(null);
+	// 	try {
+	// 		const { data, error } = await supabase
+	// 			.from("facilities")
+	// 			.select(
+	// 				`
+	// 				id, name, description,
+	// 				facility_photos:facility_photos(url, sort_order),
+	// 				facility_hours:facility_hours(dow, open_time, close_time),
+	// 				facility_address:facility_addresses(address, lat, lng)
+	// 			`
+	// 			)
+	// 			.eq("id", facilityId) 
+	// 			.single();
+	// 		if (error) throw error;
+	// 		setFacility(data as Facility);
+	// 	} catch (e: any) {
+	// 		setErr(e?.message ?? "Failed to load facilities.");
+	// 	} finally {
+	// 		setLoading(false);
+	// 	}
+	// }
+
+	// useEffect(() => {
+	// 	load();
+	// }, []);
 
 	return (
 		<div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -200,10 +207,10 @@ export default function FacilityDetail() {
 					<ChevronLeft className="pl-0 h-6 w-6" /> Facilities<ChevronRight className="pl-0 h-4 w-4" />Detail
 			</NavLink>
 
-			{loading ? (
+			{isLoading ? (
         <Card className="p-4 text-sm text-slate-600">Loading…</Card>
-      ) : err ? (
-        <Card className="p-4 text-sm text-rose-600">{err}</Card>
+      ) : isError ? (
+        <Card className="p-4 text-sm text-rose-600">{isError}</Card>
       ) : facility === null ? (
         <Card className="p-4 text-sm text-slate-600">No facilities yet.</Card>
       ) : (
